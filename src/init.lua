@@ -131,6 +131,15 @@ Icon.iconAdded = Signal.new()
 Icon.iconRemoved = Signal.new()
 Icon.iconChanged = Signal.new()
 
+-- Emulator subsystems: windows and overlays (Material's additions over
+-- TopbarPlus). Exposed as Material.Window, Material.Toast, etc.
+Icon.Window = require(iconModule.Windows.Window)
+Icon.WindowController = require(iconModule.Windows.WindowController)
+Icon.Dock = require(iconModule.Windows.Dock)
+Icon.Toast = require(iconModule.Overlays.Toast)
+Icon.Dialog = require(iconModule.Overlays.Dialog)
+Icon.Tooltip = require(iconModule.Overlays.Tooltip)
+
 
 
 -- PUBLIC FUNCTIONS
@@ -1081,6 +1090,32 @@ end
 --- janitor so it is cleaned up when the icon is destroyed.
 function Icon:addToJanitor(callback, methodName, index)
 	self.janitor:add(callback, methodName, index)
+	return self
+end
+
+--- Binds a [[Window]] to this icon: selecting the icon opens the window,
+--- deselecting closes it, and the window closing deselects the icon. This is
+--- the shop-button pattern — a topbar icon that opens a Roblox-style window —
+--- in one call.
+--- @param window a [[Window]] created with `Material.Window.new()`
+function Icon:bindWindow(window)
+	self.boundWindow = window
+	self.janitor:add(self.selected:Connect(function()
+		window:open()
+	end))
+	self.janitor:add(self.deselected:Connect(function()
+		window:close()
+	end))
+	self.janitor:add(window.opened:Connect(function()
+		if not self.isSelected then
+			self:select("BoundWindow", self)
+		end
+	end))
+	self.janitor:add(window.closed:Connect(function()
+		if self.isSelected then
+			self:deselect("BoundWindow", self)
+		end
+	end))
 	return self
 end
 

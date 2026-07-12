@@ -135,6 +135,15 @@ Icon.iconAdded = Signal.new()\
 Icon.iconRemoved = Signal.new()\
 Icon.iconChanged = Signal.new()\
 \
+-- Emulator subsystems: windows and overlays (Material's additions over\
+-- TopbarPlus). Exposed as Material.Window, Material.Toast, etc.\
+Icon.Window = require(iconModule.Windows.Window)\
+Icon.WindowController = require(iconModule.Windows.WindowController)\
+Icon.Dock = require(iconModule.Windows.Dock)\
+Icon.Toast = require(iconModule.Overlays.Toast)\
+Icon.Dialog = require(iconModule.Overlays.Dialog)\
+Icon.Tooltip = require(iconModule.Overlays.Tooltip)\
+\
 \
 \
 -- PUBLIC FUNCTIONS\
@@ -1085,6 +1094,32 @@ end\
 --- janitor so it is cleaned up when the icon is destroyed.\
 function Icon:addToJanitor(callback, methodName, index)\
 	self.janitor:add(callback, methodName, index)\
+	return self\
+end\
+\
+--- Binds a [[Window]] to this icon: selecting the icon opens the window,\
+--- deselecting closes it, and the window closing deselects the icon. This is\
+--- the shop-button pattern — a topbar icon that opens a Roblox-style window —\
+--- in one call.\
+--- @param window a [[Window]] created with `Material.Window.new()`\
+function Icon:bindWindow(window)\
+	self.boundWindow = window\
+	self.janitor:add(self.selected:Connect(function()\
+		window:open()\
+	end))\
+	self.janitor:add(self.deselected:Connect(function()\
+		window:close()\
+	end))\
+	self.janitor:add(window.opened:Connect(function()\
+		if not self.isSelected then\
+			self:select(\"BoundWindow\", self)\
+		end\
+	end))\
+	self.janitor:add(window.closed:Connect(function()\
+		if self.isSelected then\
+			self:deselect(\"BoundWindow\", self)\
+		end\
+	end))\
 	return self\
 end\
 \
@@ -4251,6 +4286,413 @@ return {\
 	--{\"IconSpot\", \"BackgroundTransparency\", 0.75, \"Viewing\"},\
 	\
 }"},
+{"Material/Overlays","Folder",nil},
+{"Material/Overlays/Dialog","ModuleScript","--- Centered confirm/prompt dialogs — a thin preset over a modal [[Window]]\
+--- (non-resizable, dimmed backdrop, a message and a row of buttons). Use it for\
+--- \"Are you sure?\" moments without hand-building a window.\
+---\
+--- ```lua a confirm dialog\
+--- Material.Dialog.confirm(\"Delete this save? This cannot be undone.\", function()\
+---     deleteSave()\
+--- end)\
+--- ```\
+--- @section Overlays\
+--- @client\
+\
+local root = script.Parent.Parent\
+local UI = require(root.UI)\
+local Skin = require(root.Skin)\
+local Window = require(root.Windows.Window)\
+\
+local Dialog = {}\
+\
+export type Button = {\
+	text: string,\
+	primary: boolean?,       -- accent-filled instead of subtle\
+	danger: boolean?,        -- danger-coloured\
+	onClick: (() -> ())?,    -- runs before the dialog closes\
+}\
+\
+export type Options = {\
+	title: string?,\
+	message: string,\
+	buttons: { Button }?,    -- defaults to a single \"OK\"\
+	dismissable: boolean?,   -- click backdrop / close button to dismiss (default true)\
+	width: number?,\
+}\
+\
+--- Shows a modal dialog and returns its [[Window]] (already open).\
+function Dialog.show(options: Options): any\
+	local width = options.width or 380\
+	local window = Window.new()\
+		:setTitle(options.title or \"\")\
+		:setSize(width, 180)\
+		:setResizable(false)\
+		:setModal(true, options.dismissable ~= false)\
+	window:center()\
+\
+	local body = window:getBody()\
+	UI.new(\"UIPadding\", {\
+		PaddingTop = UDim.new(0, 18), PaddingBottom = UDim.new(0, 14),\
+		PaddingLeft = UDim.new(0, 18), PaddingRight = UDim.new(0, 18),\
+		Parent = body,\
+	})\
+\
+	UI.new(\"TextLabel\", {\
+		Name = \"Message\",\
+		Size = UDim2.new(1, 0, 1, -48),\
+		BackgroundTransparency = 1,\
+		Font = Skin.Font,\
+		Text = options.message,\
+		TextColor3 = Skin.Text,\
+		TextSize = 15,\
+		TextWrapped = true,\
+		TextYAlignment = Enum.TextYAlignment.Top,\
+		TextXAlignment = Enum.TextXAlignment.Left,\
+		Parent = body,\
+	})\
+\
+	local buttonRow = UI.new(\"Frame\", {\
+		Name = \"Buttons\",\
+		AnchorPoint = Vector2.new(1, 1),\
+		Position = UDim2.fromScale(1, 1),\
+		Size = UDim2.new(1, 0, 0, 34),\
+		BackgroundTransparency = 1,\
+		Parent = body,\
+	}, {\
+		UI.list(Enum.FillDirection.Horizontal, 8),\
+	})\
+	local layout = buttonRow:FindFirstChildOfClass(\"UIListLayout\") :: UIListLayout\
+	layout.HorizontalAlignment = Enum.HorizontalAlignment.Right\
+\
+	local buttons = options.buttons or { { text = \"OK\", primary = true } }\
+	for index, spec in buttons do\
+		local fill = if spec.danger then Skin.Danger elseif spec.primary then Skin.Accent else Skin.SurfaceRaised\
+		local textColor = if spec.primary or spec.danger then Color3.new(1, 1, 1) else Skin.Text\
+		local button = UI.new(\"TextButton\", {\
+			Name = \"DialogButton\",\
+			Size = UDim2.fromOffset(96, 34),\
+			BackgroundColor3 = fill,\
+			AutoButtonColor = true,\
+			Text = spec.text,\
+			Font = Enum.Font.GothamMedium,\
+			TextColor3 = textColor,\
+			TextSize = 14,\
+			LayoutOrder = index,\
+			Parent = buttonRow,\
+		}, { UI.corner(UDim.new(0, 7)) })\
+		button.Activated:Connect(function()\
+			if spec.onClick then\
+				spec.onClick()\
+			end\
+			window:close()\
+			window:destroy()\
+		end)\
+	end\
+\
+	window:open()\
+	return window\
+end\
+\
+--- Convenience: a two-button confirm/cancel dialog.\
+--- @param message the prompt text\
+--- @param onConfirm runs if the user confirms\
+--- @param onCancel optional, runs if the user cancels\
+function Dialog.confirm(message: string, onConfirm: () -> (), onCancel: (() -> ())?): any\
+	return Dialog.show({\
+		message = message,\
+		buttons = {\
+			{ text = \"Cancel\", onClick = onCancel },\
+			{ text = \"Confirm\", primary = true, onClick = onConfirm },\
+		},\
+	})\
+end\
+\
+return Dialog\
+"},
+{"Material/Overlays/Toast","ModuleScript","--- Transient snackbar notifications that stack in a screen corner and dismiss\
+--- themselves — distinct from an [[Icon]]'s notice badge. Fire-and-forget:\
+--- one call shows a message, optionally with an action button.\
+---\
+--- ```lua a toast with an action\
+--- Material.Toast.show(\"Item purchased\", {\
+---     duration = 4,\
+---     action = \"Undo\",\
+---     onAction = function() refund() end,\
+--- })\
+--- ```\
+--- @section Overlays\
+--- @client\
+\
+local Players = game:GetService(\"Players\")\
+local TweenService = game:GetService(\"TweenService\")\
+\
+local root = script.Parent.Parent\
+local UI = require(root.UI)\
+local Skin = require(root.Skin)\
+\
+local Toast = {}\
+\
+export type Options = {\
+	duration: number?,       -- seconds before auto-dismiss (default 3)\
+	action: string?,         -- optional action button label\
+	onAction: (() -> ())?,   -- action button callback\
+	color: Color3?,          -- accent stripe colour (default Skin.Accent)\
+}\
+\
+local TWEEN = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)\
+local container: Frame? = nil\
+\
+local function build(): Frame\
+	if container then\
+		return container\
+	end\
+	local playerGui = Players.LocalPlayer:WaitForChild(\"PlayerGui\")\
+	local screenGui = UI.new(\"ScreenGui\", {\
+		Name = \"MaterialToasts\",\
+		ResetOnSpawn = false,\
+		IgnoreGuiInset = true,\
+		DisplayOrder = 100,\
+		Parent = playerGui,\
+	})\
+	local frame = UI.new(\"Frame\", {\
+		Name = \"ToastStack\",\
+		AnchorPoint = Vector2.new(0.5, 1),\
+		Position = UDim2.new(0.5, 0, 1, -18),\
+		Size = UDim2.fromOffset(360, 0),\
+		AutomaticSize = Enum.AutomaticSize.Y,\
+		BackgroundTransparency = 1,\
+		Parent = screenGui,\
+	}, {\
+		UI.list(Enum.FillDirection.Vertical, 8),\
+	})\
+	local layout = frame:FindFirstChildOfClass(\"UIListLayout\") :: UIListLayout\
+	layout.VerticalAlignment = Enum.VerticalAlignment.Bottom\
+	container = frame\
+	return frame\
+end\
+\
+--- Shows a toast. Returns a `dismiss` function you can call to remove it early;\
+--- otherwise it fades out after `options.duration` seconds.\
+--- @param text the message\
+--- @param options duration, an optional action button, accent colour\
+function Toast.show(text: string, options: Options?): () -> ()\
+	local opts = options or {}\
+	local stack = build()\
+\
+	local toast = UI.new(\"Frame\", {\
+		Name = \"Toast\",\
+		Size = UDim2.new(1, 0, 0, 0),\
+		AutomaticSize = Enum.AutomaticSize.Y,\
+		BackgroundColor3 = Skin.SurfaceRaised,\
+		BackgroundTransparency = 1,\
+		Parent = stack,\
+	}, {\
+		UI.corner(UDim.new(0, 8)),\
+		UI.stroke(Skin.Stroke, 1, 0.4),\
+		UI.padding(12),\
+		UI.list(Enum.FillDirection.Horizontal, 10),\
+	})\
+	-- accent stripe\
+	UI.new(\"Frame\", {\
+		Name = \"Stripe\",\
+		Size = UDim2.new(0, 3, 1, -8),\
+		Position = UDim2.fromOffset(2, 4),\
+		BackgroundColor3 = opts.color or Skin.Accent,\
+		BorderSizePixel = 0,\
+		Parent = toast,\
+	}, { UI.corner(UDim.new(1, 0)) })\
+\
+	local label = UI.new(\"TextLabel\", {\
+		Name = \"Message\",\
+		Size = UDim2.new(1, if opts.action then -90 else -12, 0, 0),\
+		AutomaticSize = Enum.AutomaticSize.Y,\
+		BackgroundTransparency = 1,\
+		Font = Skin.Font,\
+		Text = text,\
+		TextColor3 = Skin.Text,\
+		TextSize = 14,\
+		TextWrapped = true,\
+		TextXAlignment = Enum.TextXAlignment.Left,\
+		LayoutOrder = 1,\
+		Parent = toast,\
+	})\
+	label.TextTransparency = 1\
+\
+	local dismissed = false\
+	local function dismiss()\
+		if dismissed then\
+			return\
+		end\
+		dismissed = true\
+		TweenService:Create(toast, TWEEN, { BackgroundTransparency = 1 }):Play()\
+		TweenService:Create(label, TWEEN, { TextTransparency = 1 }):Play()\
+		local tween = TweenService:Create(toast, TWEEN, { Size = UDim2.new(1, 0, 0, 0) })\
+		tween:Play()\
+		tween.Completed:Once(function()\
+			toast:Destroy()\
+		end)\
+	end\
+\
+	if opts.action then\
+		local button = UI.new(\"TextButton\", {\
+			Name = \"Action\",\
+			Size = UDim2.fromOffset(70, 28),\
+			AnchorPoint = Vector2.new(0, 0.5),\
+			BackgroundColor3 = opts.color or Skin.Accent,\
+			AutoButtonColor = true,\
+			Text = opts.action,\
+			Font = Enum.Font.GothamBold,\
+			TextColor3 = Color3.new(1, 1, 1),\
+			TextSize = 13,\
+			LayoutOrder = 2,\
+			Parent = toast,\
+		}, { UI.corner(UDim.new(0, 6)) })\
+		button.Activated:Connect(function()\
+			if opts.onAction then\
+				opts.onAction()\
+			end\
+			dismiss()\
+		end)\
+	end\
+\
+	-- fade in\
+	TweenService:Create(toast, TWEEN, { BackgroundTransparency = 0 }):Play()\
+	TweenService:Create(label, TWEEN, { TextTransparency = 0 }):Play()\
+\
+	task.delay(opts.duration or 3, dismiss)\
+	return dismiss\
+end\
+\
+return Toast\
+"},
+{"Material/Overlays/Tooltip","ModuleScript","--- Rich hover tooltips for *any* GuiObject, not just icons. Attach one to a\
+--- button, a frame, anything — it follows the pointer, fades in after a short\
+--- delay, and cleans itself up. Returns a disconnect function.\
+---\
+--- ```lua tooltip on a custom button\
+--- Material.Tooltip.attach(myButton, \"Buy 100 gems\")\
+--- ```\
+--- @section Overlays\
+--- @client\
+\
+local Players = game:GetService(\"Players\")\
+local UserInputService = game:GetService(\"UserInputService\")\
+local TweenService = game:GetService(\"TweenService\")\
+\
+local root = script.Parent.Parent\
+local UI = require(root.UI)\
+local Skin = require(root.Skin)\
+\
+local Tooltip = {}\
+\
+local TWEEN = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)\
+local HOVER_DELAY = 0.4\
+local layer: ScreenGui? = nil\
+\
+local function getLayer(): ScreenGui\
+	if layer then\
+		return layer\
+	end\
+	local playerGui = Players.LocalPlayer:WaitForChild(\"PlayerGui\")\
+	layer = UI.new(\"ScreenGui\", {\
+		Name = \"MaterialTooltips\",\
+		ResetOnSpawn = false,\
+		IgnoreGuiInset = true,\
+		DisplayOrder = 200,\
+		Parent = playerGui,\
+	}) :: ScreenGui\
+	return layer :: ScreenGui\
+end\
+\
+--- Attaches a tooltip to a GuiObject. Returns a function that removes it.\
+--- @param guiObject the element to hover\
+--- @param text the tooltip text (re-read each hover, so a function-less string is fine)\
+function Tooltip.attach(guiObject: GuiObject, text: string): () -> ()\
+	local hovering = false\
+	local bubble: Frame? = nil\
+	local moveConn: RBXScriptConnection? = nil\
+\
+	local function hide()\
+		hovering = false\
+		if moveConn then\
+			moveConn:Disconnect()\
+			moveConn = nil\
+		end\
+		local current = bubble\
+		bubble = nil\
+		if current then\
+			local tween = TweenService:Create(current, TWEEN, { BackgroundTransparency = 1 })\
+			tween:Play()\
+			tween.Completed:Once(function()\
+				current:Destroy()\
+			end)\
+		end\
+	end\
+\
+	local function show()\
+		if bubble then\
+			return\
+		end\
+		local frame = UI.new(\"Frame\", {\
+			Name = \"Tooltip\",\
+			AutomaticSize = Enum.AutomaticSize.XY,\
+			BackgroundColor3 = Skin.Header,\
+			BackgroundTransparency = 1,\
+			Parent = getLayer(),\
+		}, {\
+			UI.corner(UDim.new(0, 6)),\
+			UI.stroke(Skin.Stroke, 1, 0.3),\
+			UI.padding(8),\
+		})\
+		UI.new(\"TextLabel\", {\
+			Name = \"Text\",\
+			AutomaticSize = Enum.AutomaticSize.XY,\
+			BackgroundTransparency = 1,\
+			Font = Skin.Font,\
+			Text = text,\
+			TextColor3 = Skin.Text,\
+			TextSize = 13,\
+			Parent = frame,\
+		})\
+		bubble = frame\
+		TweenService:Create(frame, TWEEN, { BackgroundTransparency = 0 }):Play()\
+\
+		local function follow()\
+			local pos = UserInputService:GetMouseLocation()\
+			frame.Position = UDim2.fromOffset(pos.X + 16, pos.Y + 8)\
+		end\
+		follow()\
+		moveConn = UserInputService.InputChanged:Connect(function(input)\
+			if input.UserInputType == Enum.UserInputType.MouseMovement then\
+				follow()\
+			end\
+		end)\
+	end\
+\
+	local enterConn = guiObject.MouseEnter:Connect(function()\
+		hovering = true\
+		task.delay(HOVER_DELAY, function()\
+			if hovering then\
+				show()\
+			end\
+		end)\
+	end)\
+	local leaveConn = guiObject.MouseLeave:Connect(hide)\
+	local destroyConn = guiObject.Destroying:Once(function()\
+		hide()\
+	end)\
+\
+	return function()\
+		enterConn:Disconnect()\
+		leaveConn:Disconnect()\
+		destroyConn:Disconnect()\
+		hide()\
+	end\
+end\
+\
+return Tooltip\
+"},
 {"Material/Packages","Folder",nil},
 {"Material/Packages/GoodSignal","ModuleScript","--------------------------------------------------------------------------------\
 --               Batched Yield-Safe Signal Implementation                     --\
@@ -4786,6 +5228,49 @@ function Reference.getObject()\
 end\
 \
 return Reference"},
+{"Material/Skin","ModuleScript","--- The shared visual language for Material's windows and overlays — a dark,\
+--- rounded palette emulating Roblox's in-experience core UI (the store /\
+--- quick-access window look). One table so every surface matches; swap it to\
+--- reskin the whole emulator at once.\
+--- @section Support\
+--- @client\
+\
+export type Skin = {\
+	Backdrop: Color3,\
+	Surface: Color3,\
+	SurfaceRaised: Color3,\
+	Header: Color3,\
+	Stroke: Color3,\
+	Divider: Color3,\
+	Text: Color3,\
+	TextMuted: Color3,\
+	Accent: Color3,\
+	Danger: Color3,\
+	CornerRadius: UDim,\
+	HeaderHeight: number,\
+	Font: Enum.Font,\
+	Shadow: Color3,\
+}\
+\
+local Skin: Skin = {\
+	Backdrop = Color3.fromRGB(0, 0, 0),        -- dim behind modal windows\
+	Surface = Color3.fromRGB(28, 29, 33),      -- window body\
+	SurfaceRaised = Color3.fromRGB(38, 40, 46),-- inputs, dock buttons\
+	Header = Color3.fromRGB(23, 24, 28),       -- title bar\
+	Stroke = Color3.fromRGB(58, 61, 70),       -- window border\
+	Divider = Color3.fromRGB(48, 50, 58),      -- header/body separator\
+	Text = Color3.fromRGB(235, 238, 245),\
+	TextMuted = Color3.fromRGB(150, 156, 168),\
+	Accent = Color3.fromRGB(0, 162, 255),      -- Roblox blue\
+	Danger = Color3.fromRGB(236, 111, 98),\
+	CornerRadius = UDim.new(0, 10),\
+	HeaderHeight = 40,\
+	Font = Enum.Font.GothamMedium,\
+	Shadow = Color3.fromRGB(0, 0, 0),\
+}\
+\
+return Skin\
+"},
 {"Material/Types","ModuleScript","--!strict\
 \
 -- GoodSignal Types (...but simpler!)\
@@ -5263,6 +5748,85 @@ export type StaticIcon = {\
 } & StaticFunctions\
 \
 return {}"},
+{"Material/UI","ModuleScript","--- Tiny declarative instance builder shared by the window and overlay\
+--- elements. `UI.new(class, props, children)` cuts the `Instance.new` +\
+--- property-assignment boilerplate down to one call, and the helpers\
+--- ([[UI.corner]], [[UI.stroke]], [[UI.padding]], [[UI.gradient]]) cover the\
+--- decoration instances every element repeats.\
+--- @section Support\
+--- @client\
+\
+local UI = {}\
+\
+--- Creates an instance, assigns `props`, parents `children` to it, and\
+--- (last) applies `props.Parent` so children exist before the tree is live.\
+--- @param className the Roblox class, e.g. \"Frame\"\
+--- @param props a map of properties; `Parent` is applied after children\
+--- @param children an array of instances to parent to the new instance\
+function UI.new(className: string, props: { [string]: any }?, children: { Instance }?): Instance\
+	local instance = Instance.new(className)\
+	if props then\
+		for key, value in props do\
+			if key ~= \"Parent\" then\
+				(instance :: any)[key] = value\
+			end\
+		end\
+	end\
+	if children then\
+		for _, child in children do\
+			child.Parent = instance\
+		end\
+	end\
+	if props and props.Parent then\
+		instance.Parent = props.Parent\
+	end\
+	return instance\
+end\
+\
+--- A UICorner with the given radius (default 8px).\
+function UI.corner(radius: UDim?): UICorner\
+	return UI.new(\"UICorner\", { CornerRadius = radius or UDim.new(0, 8) }) :: UICorner\
+end\
+\
+--- A UIStroke in the given colour, thickness, and transparency.\
+function UI.stroke(color: Color3, thickness: number?, transparency: number?): UIStroke\
+	return UI.new(\"UIStroke\", {\
+		Color = color,\
+		Thickness = thickness or 1,\
+		Transparency = transparency or 0,\
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,\
+	}) :: UIStroke\
+end\
+\
+--- A uniform UIPadding of `all` pixels on every side.\
+function UI.padding(all: number): UIPadding\
+	local px = UDim.new(0, all)\
+	return UI.new(\"UIPadding\", {\
+		PaddingTop = px, PaddingBottom = px, PaddingLeft = px, PaddingRight = px,\
+	}) :: UIPadding\
+end\
+\
+--- A vertical or horizontal UIListLayout with a pixel gap.\
+function UI.list(fillDirection: Enum.FillDirection, gap: number?): UIListLayout\
+	return UI.new(\"UIListLayout\", {\
+		FillDirection = fillDirection,\
+		Padding = UDim.new(0, gap or 0),\
+		SortOrder = Enum.SortOrder.LayoutOrder,\
+		HorizontalAlignment = Enum.HorizontalAlignment.Center,\
+		VerticalAlignment = Enum.VerticalAlignment.Center,\
+	}) :: UIListLayout\
+end\
+\
+--- A vertical two-stop UIGradient, handy for subtle window backdrops.\
+function UI.gradient(top: Color3, bottom: Color3, rotation: number?): UIGradient\
+	return UI.new(\"UIGradient\", {\
+		Color = ColorSequence.new(top, bottom),\
+		Rotation = rotation or 90,\
+	}) :: UIGradient\
+end\
+\
+return UI\
+"},
 {"Material/Utility","ModuleScript","-- Just generic utility functions which I use and repeat across all my projects\
 \
 \
@@ -5776,6 +6340,915 @@ end\
 \
 \
 return VERSION"},
+{"Material/Windows","Folder",nil},
+{"Material/Windows/Dock","ModuleScript","--- An OS-style taskbar of minimized windows. When a [[Window]] is minimized it\
+--- appears here as a button; click it to restore. The dock is fed automatically\
+--- by the [[WindowController]] and hides itself when empty.\
+---\
+--- ```lua turn the dock on\
+--- Material.Dock.setEnabled(true)   -- off by default\
+--- ```\
+--- @section Windows\
+--- @client\
+\
+local Players = game:GetService(\"Players\")\
+\
+local root = script.Parent.Parent\
+local Janitor = require(root.Packages.Janitor)\
+local UI = require(root.UI)\
+local Skin = require(root.Skin)\
+local WindowController = require(script.Parent.WindowController)\
+\
+local Dock = {}\
+Dock.enabled = false\
+\
+local janitor = Janitor.new()\
+local bar: Frame? = nil\
+local buttons: { [string]: TextButton } = {}\
+\
+local function build(): Frame\
+	if bar then\
+		return bar\
+	end\
+	local playerGui = Players.LocalPlayer:WaitForChild(\"PlayerGui\")\
+	local screenGui = UI.new(\"ScreenGui\", {\
+		Name = \"MaterialDock\",\
+		ResetOnSpawn = false,\
+		IgnoreGuiInset = true,\
+		DisplayOrder = WindowController.baseDisplayOrder - 1,\
+		Parent = playerGui,\
+	})\
+	local frame = UI.new(\"Frame\", {\
+		Name = \"Dock\",\
+		AnchorPoint = Vector2.new(0.5, 1),\
+		Position = UDim2.new(0.5, 0, 1, -10),\
+		Size = UDim2.fromOffset(0, 44),\
+		AutomaticSize = Enum.AutomaticSize.X,\
+		BackgroundColor3 = Skin.Header,\
+		BackgroundTransparency = 0.05,\
+		Visible = false,\
+		Parent = screenGui,\
+	}, {\
+		UI.corner(UDim.new(0, 12)),\
+		UI.stroke(Skin.Stroke, 1, 0.3),\
+		UI.padding(6),\
+		UI.list(Enum.FillDirection.Horizontal, 6),\
+	})\
+	bar = frame\
+	return frame\
+end\
+\
+local function refreshVisibility()\
+	if bar then\
+		bar.Visible = next(buttons) ~= nil\
+	end\
+end\
+\
+local function addButton(window: any)\
+	if not Dock.enabled or buttons[window.UID] then\
+		return\
+	end\
+	local frame = build()\
+	local button = UI.new(\"TextButton\", {\
+		Name = \"DockItem\",\
+		Size = UDim2.fromOffset(150, 32),\
+		BackgroundColor3 = Skin.SurfaceRaised,\
+		AutoButtonColor = true,\
+		Text = \"  \" .. window.title,\
+		TextXAlignment = Enum.TextXAlignment.Left,\
+		TextTruncate = Enum.TextTruncate.AtEnd,\
+		Font = Skin.Font,\
+		TextColor3 = Skin.Text,\
+		TextSize = 13,\
+		Parent = frame,\
+	}, { UI.corner(UDim.new(0, 8)) })\
+	button.Activated:Connect(function()\
+		window:restore()\
+	end)\
+	buttons[window.UID] = button\
+	refreshVisibility()\
+end\
+\
+local function removeButton(window: any)\
+	local button = buttons[window.UID]\
+	if button then\
+		button:Destroy()\
+		buttons[window.UID] = nil\
+		refreshVisibility()\
+	end\
+end\
+\
+--- Turns the dock on or off. Off by default — enable it if you want minimized\
+--- windows to collect in a taskbar rather than just vanishing.\
+function Dock.setEnabled(bool: boolean)\
+	Dock.enabled = bool\
+	if bool then\
+		janitor:add(WindowController.windowMinimized:Connect(addButton))\
+		janitor:add(WindowController.windowRestored:Connect(removeButton))\
+		janitor:add(WindowController.windowUnregistered:Connect(removeButton))\
+	else\
+		janitor:clean()\
+		for uid, button in buttons do\
+			button:Destroy()\
+			buttons[uid] = nil\
+		end\
+		refreshVisibility()\
+	end\
+	return Dock\
+end\
+\
+--- Returns the dock's Frame (building it on first call), for custom styling.\
+function Dock.getInstance(): Frame\
+	return build()\
+end\
+\
+return Dock\
+"},
+{"Material/Windows/Window","ModuleScript","--- A draggable, resizable window emulating Roblox's in-experience core UI (the\
+--- store / quick-access panel). Create one, give it a title and size, and drop\
+--- content in — either build inside [[Window:getBody]] or [[Window:adopt]] an\
+--- existing GuiObject straight off your own ScreenGui.\
+---\
+--- Windows manage themselves through the [[WindowController]]: opening\
+--- registers and focuses, clicking raises to the front, and closing restores\
+--- any adopted content to where it came from. Bind one to a topbar icon with\
+--- [[Icon:bindWindow]] for the full shop-button experience.\
+---\
+--- ```lua a shop window opened from the topbar\
+--- local shop = Material.Window.new()\
+---     :setTitle(\"Shop\")\
+---     :setIcon(14723463500)\
+---     :setSize(560, 400)\
+---     :adopt(playerGui.ShopGui.Root)   -- reparent your existing UI in\
+---\
+--- Material.new()\
+---     :setImage(14723463500)\
+---     :setCaption(\"Shop\")\
+---     :bindWindow(shop)                -- topbar icon toggles it\
+--- ```\
+--- @section Windows\
+--- @client\
+\
+local UserInputService = game:GetService(\"UserInputService\")\
+local TweenService = game:GetService(\"TweenService\")\
+local Workspace = game:GetService(\"Workspace\")\
+\
+local root = script.Parent.Parent\
+local Signal = require(root.Packages.GoodSignal)\
+local Janitor = require(root.Packages.Janitor)\
+local Utility = require(root.Utility)\
+local UI = require(root.UI)\
+local Skin = require(root.Skin)\
+local WindowController = require(script.Parent.WindowController)\
+\
+local MIN_WIDTH = 220\
+local MIN_HEIGHT = 140\
+local OPEN_TWEEN = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)\
+\
+local Window = {}\
+Window.__index = Window\
+\
+local function viewport(): Vector2\
+	local camera = Workspace.CurrentCamera\
+	return if camera then camera.ViewportSize else Vector2.new(1280, 720)\
+end\
+\
+-- the eight resize grips: name -> {dirX, dirY} where -1/0/1 pick which edge\
+local HANDLES = {\
+	N = { 0, -1 }, S = { 0, 1 }, E = { 1, 0 }, W = { -1, 0 },\
+	NE = { 1, -1 }, NW = { -1, -1 }, SE = { 1, 1 }, SW = { -1, 1 },\
+}\
+\
+--- Creates a window (hidden until [[Window:open]]): centered, default size\
+--- 480×320, draggable, resizable, with a title bar carrying minimize,\
+--- maximize, and close controls.\
+function Window.new()\
+	local self = setmetatable({}, Window)\
+	local janitor = Janitor.new()\
+	self.janitor = janitor\
+	self.UID = Utility.generateUID()\
+	self.title = \"Window\"\
+	self.isOpen = false\
+	self.isMinimized = false\
+	self.isMaximized = false\
+	self.isModal = false\
+	self.dismissable = true\
+	self.draggable = true\
+	self.resizable = true\
+	self._z = 0\
+	self._adopted = {}          -- [instance] = { parent, position, size }\
+	self._restoreRect = nil     -- pre-maximize {position, size}\
+\
+	-- signals\
+	self.opened = janitor:add(Signal.new())\
+	self.closed = janitor:add(Signal.new())\
+	self.minimized = janitor:add(Signal.new())\
+	self.maximized = janitor:add(Signal.new())\
+	self.restored = janitor:add(Signal.new())\
+	self.focused = janitor:add(Signal.new())\
+	self.moved = janitor:add(Signal.new())\
+	self.resized = janitor:add(Signal.new())\
+\
+	self:_build()\
+	janitor:add(function()\
+		self:release()\
+		WindowController.unregister(self)\
+	end)\
+	return self\
+end\
+\
+function Window:_build()\
+	local size = Vector2.new(480, 320)\
+	local vp = viewport()\
+	local pos = (vp - size) / 2\
+\
+	-- root is a transparent geometry frame (moves/resizes). The shadow sits\
+	-- behind an inner Panel that does the clipping, so the shadow isn't clipped.\
+	local rootFrame = UI.new(\"Frame\", {\
+		Name = \"Window\",\
+		Size = UDim2.fromOffset(size.X, size.Y),\
+		Position = UDim2.fromOffset(pos.X, pos.Y),\
+		BackgroundTransparency = 1,\
+		Visible = false,\
+	})\
+	self.root = rootFrame\
+\
+	-- soft drop shadow behind the window\
+	UI.new(\"ImageLabel\", {\
+		Name = \"Shadow\",\
+		AnchorPoint = Vector2.new(0.5, 0.5),\
+		Position = UDim2.fromScale(0.5, 0.5),\
+		Size = UDim2.new(1, 48, 1, 48),\
+		BackgroundTransparency = 1,\
+		Image = \"rbxassetid://6015897843\",\
+		ImageColor3 = Skin.Shadow,\
+		ImageTransparency = 0.4,\
+		ScaleType = Enum.ScaleType.Slice,\
+		SliceCenter = Rect.new(49, 49, 450, 450),\
+		ZIndex = 0,\
+		Parent = rootFrame,\
+	})\
+\
+	-- the visible, clipped panel\
+	local panel = UI.new(\"Frame\", {\
+		Name = \"Panel\",\
+		Size = UDim2.fromScale(1, 1),\
+		BackgroundColor3 = Skin.Surface,\
+		BorderSizePixel = 0,\
+		ClipsDescendants = true,\
+		ZIndex = 1,\
+		Parent = rootFrame,\
+	}, {\
+		UI.corner(Skin.CornerRadius),\
+		UI.stroke(Skin.Stroke, 1, 0.2),\
+	})\
+	self.panel = panel\
+\
+	-- header / title bar\
+	local header = UI.new(\"Frame\", {\
+		Name = \"Header\",\
+		Size = UDim2.new(1, 0, 0, Skin.HeaderHeight),\
+		BackgroundColor3 = Skin.Header,\
+		BorderSizePixel = 0,\
+		ZIndex = 2,\
+	}, { UI.corner(Skin.CornerRadius) })\
+	-- square off the header's bottom corners against the body\
+	UI.new(\"Frame\", {\
+		Name = \"HeaderFill\",\
+		AnchorPoint = Vector2.new(0, 1),\
+		Position = UDim2.fromScale(0, 1),\
+		Size = UDim2.new(1, 0, 0, Skin.CornerRadius.Offset),\
+		BackgroundColor3 = Skin.Header,\
+		BorderSizePixel = 0,\
+		Parent = header,\
+	})\
+	header.Parent = panel\
+	self.header = header\
+\
+	local titleIcon = UI.new(\"ImageLabel\", {\
+		Name = \"TitleIcon\",\
+		AnchorPoint = Vector2.new(0, 0.5),\
+		Position = UDim2.new(0, 12, 0.5, 0),\
+		Size = UDim2.fromOffset(20, 20),\
+		BackgroundTransparency = 1,\
+		Visible = false,\
+		ZIndex = 3,\
+		Parent = header,\
+	})\
+	self.titleIcon = titleIcon\
+\
+	local titleLabel = UI.new(\"TextLabel\", {\
+		Name = \"Title\",\
+		AnchorPoint = Vector2.new(0, 0.5),\
+		Position = UDim2.new(0, 14, 0.5, 0),\
+		Size = UDim2.new(1, -160, 1, 0),\
+		BackgroundTransparency = 1,\
+		Font = Skin.Font,\
+		Text = self.title,\
+		TextColor3 = Skin.Text,\
+		TextSize = 15,\
+		TextXAlignment = Enum.TextXAlignment.Left,\
+		TextTruncate = Enum.TextTruncate.AtEnd,\
+		ZIndex = 3,\
+		Parent = header,\
+	})\
+	self.titleLabel = titleLabel\
+\
+	-- window controls (minimize / maximize / close)\
+	local controls = UI.new(\"Frame\", {\
+		Name = \"Controls\",\
+		AnchorPoint = Vector2.new(1, 0.5),\
+		Position = UDim2.new(1, -8, 0.5, 0),\
+		Size = UDim2.fromOffset(112, 28),\
+		BackgroundTransparency = 1,\
+		ZIndex = 3,\
+	}, { UI.list(Enum.FillDirection.Horizontal, 6) })\
+	controls.Parent = header\
+\
+	local function controlButton(name, glyph, color, order, callback)\
+		local button = UI.new(\"TextButton\", {\
+			Name = name,\
+			Size = UDim2.fromOffset(28, 28),\
+			BackgroundColor3 = Skin.SurfaceRaised,\
+			AutoButtonColor = true,\
+			Text = glyph,\
+			Font = Enum.Font.GothamBold,\
+			TextColor3 = color,\
+			TextSize = 15,\
+			LayoutOrder = order,\
+			ZIndex = 3,\
+			Parent = controls,\
+		}, { UI.corner(UDim.new(0, 6)) })\
+		self.janitor:add(button.Activated:Connect(callback))\
+		return button\
+	end\
+\
+	controlButton(\"Minimize\", \"\\u{2013}\", Skin.TextMuted, 1, function()\
+		self:minimize()\
+	end)\
+	self.maximizeButton = controlButton(\"Maximize\", \"\\u{25A1}\", Skin.TextMuted, 2, function()\
+		if self.isMaximized then self:restore() else self:maximize() end\
+	end)\
+	controlButton(\"Close\", \"\\u{2715}\", Skin.Danger, 3, function()\
+		self:close()\
+	end)\
+\
+	-- body (where content / adopted UI lives)\
+	local body = UI.new(\"Frame\", {\
+		Name = \"Body\",\
+		AnchorPoint = Vector2.new(0, 1),\
+		Position = UDim2.fromScale(0, 1),\
+		Size = UDim2.new(1, 0, 1, -Skin.HeaderHeight),\
+		BackgroundColor3 = Skin.Surface,\
+		BorderSizePixel = 0,\
+		ClipsDescendants = true,\
+		ZIndex = 1,\
+	}, { UI.padding(0) })\
+	body.Parent = panel\
+	self.body = body\
+\
+	self:_wireDrag()\
+	self:_wireResize()\
+\
+	-- click anywhere to focus\
+	self.janitor:add(panel.InputBegan:Connect(function(input)\
+		if input.UserInputType == Enum.UserInputType.MouseButton1\
+			or input.UserInputType == Enum.UserInputType.Touch then\
+			self:focus()\
+		end\
+	end))\
+end\
+\
+local function isPointerDown(input): boolean\
+	return input.UserInputType == Enum.UserInputType.MouseButton1\
+		or input.UserInputType == Enum.UserInputType.Touch\
+end\
+\
+local function isPointerMove(input): boolean\
+	return input.UserInputType == Enum.UserInputType.MouseMovement\
+		or input.UserInputType == Enum.UserInputType.Touch\
+end\
+\
+function Window:_wireDrag()\
+	local dragging, dragStart, startPos = false, Vector3.zero, Vector2.zero\
+	self.janitor:add(self.header.InputBegan:Connect(function(input)\
+		if not self.draggable or self.isMaximized or not isPointerDown(input) then\
+			return\
+		end\
+		dragging = true\
+		dragStart = input.Position\
+		startPos = Vector2.new(self.root.Position.X.Offset, self.root.Position.Y.Offset)\
+	end))\
+	self.janitor:add(UserInputService.InputChanged:Connect(function(input)\
+		if not dragging or not isPointerMove(input) then\
+			return\
+		end\
+		local delta = input.Position - dragStart\
+		self:_place(startPos + Vector2.new(delta.X, delta.Y), nil)\
+	end))\
+	self.janitor:add(UserInputService.InputEnded:Connect(function(input)\
+		if isPointerDown(input) then\
+			dragging = false\
+		end\
+	end))\
+\
+	-- double-click header to toggle maximize\
+	self.janitor:add(self.header.InputBegan:Connect(function(input)\
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1 then\
+			return\
+		end\
+		local now = os.clock()\
+		if self._lastHeaderClick and now - self._lastHeaderClick < 0.3 then\
+			if self.isMaximized then self:restore() else self:maximize() end\
+		end\
+		self._lastHeaderClick = now\
+	end))\
+end\
+\
+function Window:_wireResize()\
+	for name, dir in HANDLES do\
+		local dirX, dirY = dir[1], dir[2]\
+		local thickness = 8\
+		local grip = UI.new(\"Frame\", {\
+			Name = \"Resize\" .. name,\
+			BackgroundTransparency = 1,\
+			ZIndex = 5,\
+			AnchorPoint = Vector2.new((dirX + 1) / 2, (dirY + 1) / 2),\
+			Position = UDim2.fromScale((dirX + 1) / 2, (dirY + 1) / 2),\
+			Size = UDim2.new(\
+				if dirX == 0 then 1 else 0, if dirX == 0 then -thickness * 2 else thickness,\
+				if dirY == 0 then 1 else 0, if dirY == 0 then -thickness * 2 else thickness\
+			),\
+			Parent = self.root,\
+		})\
+		local resizing, startPointer, startPos, startSize = false, Vector3.zero, Vector2.zero, Vector2.zero\
+		self.janitor:add(grip.InputBegan:Connect(function(input)\
+			if not self.resizable or self.isMaximized or not isPointerDown(input) then\
+				return\
+			end\
+			resizing = true\
+			startPointer = input.Position\
+			startPos = Vector2.new(self.root.Position.X.Offset, self.root.Position.Y.Offset)\
+			startSize = Vector2.new(self.root.Size.X.Offset, self.root.Size.Y.Offset)\
+			self:focus()\
+		end))\
+		self.janitor:add(UserInputService.InputChanged:Connect(function(input)\
+			if not resizing or not isPointerMove(input) then\
+				return\
+			end\
+			local delta = input.Position - startPointer\
+			local newW = math.max(MIN_WIDTH, startSize.X + dirX * delta.X)\
+			local newH = math.max(MIN_HEIGHT, startSize.Y + dirY * delta.Y)\
+			local newX = if dirX == -1 then startPos.X + (startSize.X - newW) else startPos.X\
+			local newY = if dirY == -1 then startPos.Y + (startSize.Y - newH) else startPos.Y\
+			self:_place(Vector2.new(newX, newY), Vector2.new(newW, newH))\
+			self.resized:Fire(newW, newH)\
+		end))\
+		self.janitor:add(UserInputService.InputEnded:Connect(function(input)\
+			if isPointerDown(input) then\
+				resizing = false\
+			end\
+		end))\
+	end\
+end\
+\
+-- clamp + apply position (and optionally size) within the viewport\
+function Window:_place(position: Vector2, size: Vector2?)\
+	local vp = viewport()\
+	local currentSize = size or Vector2.new(self.root.Size.X.Offset, self.root.Size.Y.Offset)\
+	local x = math.clamp(position.X, 0, math.max(0, vp.X - currentSize.X))\
+	local y = math.clamp(position.Y, 0, math.max(0, vp.Y - currentSize.Y))\
+	self.root.Position = UDim2.fromOffset(x, y)\
+	if size then\
+		self.root.Size = UDim2.fromOffset(size.X, size.Y)\
+	end\
+	self.moved:Fire(x, y)\
+end\
+\
+--- Sets the window's title text.\
+function Window:setTitle(text: string)\
+	self.title = text\
+	self.titleLabel.Text = text\
+	return self\
+end\
+\
+--- Sets the small icon shown left of the title (an asset id or asset string).\
+function Window:setIcon(imageId: (number | string)?)\
+	if imageId == nil then\
+		self.titleIcon.Visible = false\
+	else\
+		self.titleIcon.Image = if tonumber(imageId) then `rbxassetid://{imageId}` else imageId\
+		self.titleIcon.Visible = true\
+		self.titleLabel.Position = UDim2.new(0, 40, 0.5, 0)\
+	end\
+	return self\
+end\
+\
+--- Sets the window's pixel size (clamped to the 220×140 minimum).\
+function Window:setSize(width: number, height: number)\
+	self:_place(\
+		Vector2.new(self.root.Position.X.Offset, self.root.Position.Y.Offset),\
+		Vector2.new(math.max(MIN_WIDTH, width), math.max(MIN_HEIGHT, height))\
+	)\
+	return self\
+end\
+\
+--- Sets the window's top-left pixel position.\
+function Window:setPosition(x: number, y: number)\
+	self:_place(Vector2.new(x, y), nil)\
+	return self\
+end\
+\
+--- Centers the window in the viewport.\
+function Window:center()\
+	local vp = viewport()\
+	local s = Vector2.new(self.root.Size.X.Offset, self.root.Size.Y.Offset)\
+	self:_place((vp - s) / 2, nil)\
+	return self\
+end\
+\
+--- Enables or disables title-bar dragging (default true).\
+function Window:setDraggable(bool: boolean)\
+	self.draggable = bool\
+	return self\
+end\
+\
+--- Enables or disables edge/corner resizing (default true).\
+function Window:setResizable(bool: boolean)\
+	self.resizable = bool\
+	return self\
+end\
+\
+--- Makes the window modal: a dimmed backdrop covers everything behind it while\
+--- it is open. With `dismissable` (default true) clicking the backdrop closes it.\
+function Window:setModal(bool: boolean, dismissable: boolean?)\
+	self.isModal = bool\
+	if dismissable ~= nil then\
+		self.dismissable = dismissable\
+	end\
+	return self\
+end\
+\
+--- Reparents an existing GuiObject into the window body, remembering where it\
+--- came from. Its original parent, size, and position are restored on\
+--- [[Window:release]], [[Window:close]], or destroy — Material only borrows it.\
+--- @param guiObject any GuiObject (a Frame off your own ScreenGui, etc.)\
+function Window:adopt(guiObject: GuiObject)\
+	if self._adopted[guiObject] then\
+		return self\
+	end\
+	self._adopted[guiObject] = {\
+		parent = guiObject.Parent,\
+		size = guiObject.Size,\
+		position = guiObject.Position,\
+		anchor = guiObject.AnchorPoint,\
+	}\
+	guiObject.Size = UDim2.fromScale(1, 1)\
+	guiObject.Position = UDim2.fromScale(0, 0)\
+	guiObject.AnchorPoint = Vector2.zero\
+	guiObject.Parent = self.body\
+	return self\
+end\
+\
+--- Restores every adopted GuiObject to its original parent and geometry.\
+function Window:release()\
+	for guiObject, saved in self._adopted do\
+		if guiObject and guiObject.Parent == self.body then\
+			guiObject.Size = saved.size\
+			guiObject.Position = saved.position\
+			guiObject.AnchorPoint = saved.anchor\
+			guiObject.Parent = saved.parent\
+		end\
+	end\
+	table.clear(self._adopted)\
+	return self\
+end\
+\
+--- Returns the body frame — parent your own content here when not adopting.\
+function Window:getBody(): Frame\
+	return self.body\
+end\
+\
+--- Opens the window: parents it into the shared layer, registers with the\
+--- [[WindowController]], focuses it, shows the modal backdrop if set, and plays\
+--- the scale-fade open transition.\
+function Window:open()\
+	if self.isOpen then\
+		self:focus()\
+		return self\
+	end\
+	self.isOpen = true\
+	self.isMinimized = false\
+	self.root.Parent = WindowController.getLayer()\
+	self.root.Visible = true\
+	WindowController.register(self)\
+	if self.isModal then\
+		self:_setBackdrop(true)\
+	end\
+\
+	-- scale-fade in (driven off the Size offsets, valid before first render)\
+	local finalPos = self.root.Position\
+	local w, h = self.root.Size.X.Offset, self.root.Size.Y.Offset\
+	local sw, sh = w * 0.94, h * 0.94\
+	self.root.Position = UDim2.fromOffset(finalPos.X.Offset + (w - sw) / 2, finalPos.Y.Offset + (h - sh) / 2)\
+	self.root.Size = UDim2.fromOffset(sw, sh)\
+	TweenService:Create(self.root, OPEN_TWEEN, {\
+		Size = UDim2.fromOffset(w, h),\
+		Position = finalPos,\
+	}):Play()\
+\
+	self.opened:Fire()\
+	return self\
+end\
+\
+--- Closes the window: restores adopted content, hides the backdrop,\
+--- unregisters, and plays the close transition. The window can be reopened.\
+function Window:close()\
+	if not self.isOpen then\
+		return self\
+	end\
+	self.isOpen = false\
+	self.isMinimized = false\
+	self.isMaximized = false\
+	self:_setBackdrop(false)\
+	local tween = TweenService:Create(self.root, OPEN_TWEEN, {\
+		Size = UDim2.fromOffset(self.root.Size.X.Offset * 0.94, self.root.Size.Y.Offset * 0.94),\
+	})\
+	tween:Play()\
+	tween.Completed:Once(function()\
+		self.root.Visible = false\
+	end)\
+	self:release()\
+	WindowController.unregister(self)\
+	self.closed:Fire()\
+	return self\
+end\
+\
+--- Opens the window if closed, closes it if open.\
+function Window:toggle()\
+	if self.isOpen and not self.isMinimized then\
+		self:close()\
+	else\
+		self:open()\
+	end\
+	return self\
+end\
+\
+--- Hides the window into the [[Dock]] without closing it (adopted content\
+--- stays put). Restore with [[Window:restore]] or the dock button.\
+function Window:minimize()\
+	if not self.isOpen or self.isMinimized then\
+		return self\
+	end\
+	self.isMinimized = true\
+	self.root.Visible = false\
+	self:_setBackdrop(false)\
+	WindowController.notifyMinimized(self)\
+	self.minimized:Fire()\
+	return self\
+end\
+\
+--- Expands the window to fill the viewport (remembering the previous rect).\
+function Window:maximize()\
+	if self.isMaximized then\
+		return self\
+	end\
+	self._restoreRect = {\
+		position = self.root.Position,\
+		size = self.root.Size,\
+	}\
+	self.isMaximized = true\
+	local vp = viewport()\
+	TweenService:Create(self.root, OPEN_TWEEN, {\
+		Position = UDim2.fromOffset(8, 8),\
+		Size = UDim2.fromOffset(vp.X - 16, vp.Y - 16),\
+	}):Play()\
+	self.maximizeButton.Text = \"\\u{2750}\"\
+	self.maximized:Fire()\
+	return self\
+end\
+\
+--- Un-minimizes or un-maximizes back to the window's previous size/position.\
+function Window:restore()\
+	if self.isMinimized then\
+		self.isMinimized = false\
+		self.root.Visible = true\
+		WindowController.focus(self)\
+		WindowController.notifyRestored(self)\
+		self.restored:Fire()\
+		return self\
+	end\
+	if self.isMaximized and self._restoreRect then\
+		self.isMaximized = false\
+		TweenService:Create(self.root, OPEN_TWEEN, {\
+			Position = self._restoreRect.position,\
+			Size = self._restoreRect.size,\
+		}):Play()\
+		self.maximizeButton.Text = \"\\u{25A1}\"\
+		self.restored:Fire()\
+	end\
+	return self\
+end\
+\
+--- Brings the window to the front and marks it the active window.\
+function Window:focus()\
+	if not self.isOpen then\
+		return self\
+	end\
+	WindowController.focus(self)\
+	self.focused:Fire()\
+	return self\
+end\
+\
+function Window:_setBackdrop(visible: boolean)\
+	local backdrop = WindowController.getBackdrop()\
+	if visible then\
+		backdrop.ZIndex = math.max(1, self._z - 1)\
+		backdrop.Visible = true\
+		TweenService:Create(backdrop, OPEN_TWEEN, { BackgroundTransparency = 0.45 }):Play()\
+		self._backdropConn = self.janitor:add(backdrop.InputBegan:Connect(function(input)\
+			if self.dismissable and isPointerDown(input) then\
+				self:close()\
+			end\
+		end))\
+	else\
+		local tween = TweenService:Create(backdrop, OPEN_TWEEN, { BackgroundTransparency = 1 })\
+		tween:Play()\
+		tween.Completed:Once(function()\
+			-- only hide if no other modal re-showed it\
+			if backdrop.BackgroundTransparency >= 1 then\
+				backdrop.Visible = false\
+			end\
+		end)\
+	end\
+end\
+\
+--- Destroys the window and everything it owns (adopted content is released\
+--- first). Alias: `Destroy`.\
+function Window:destroy()\
+	if self.isDestroyed then\
+		return\
+	end\
+	self.isDestroyed = true\
+	self.janitor:clean()\
+	if self.root then\
+		self.root:Destroy()\
+	end\
+end\
+Window.Destroy = Window.destroy\
+\
+return Window\
+"},
+{"Material/Windows/WindowController","ModuleScript","--- The window manager: one singleton owning the shared `MaterialWindows`\
+--- ScreenGui, the registry of every open [[Window]], z-ordering and focus, the\
+--- optional modal backdrop, and the [[Dock]] feed. You rarely touch it\
+--- directly — [[Window]] registers itself — but it's the source of truth for\
+--- \"which windows exist\" and \"which one is active\".\
+---\
+--- ```lua react to any window opening\
+--- Material.WindowController.windowRegistered:Connect(function(window)\
+---     print(\"opened\", window.title)\
+--- end)\
+--- ```\
+--- @section Windows\
+--- @client\
+\
+local Players = game:GetService(\"Players\")\
+\
+local root = script.Parent.Parent\
+local Signal = require(root.Packages.GoodSignal)\
+local UI = require(root.UI)\
+local Skin = require(root.Skin)\
+\
+local WindowController = {}\
+WindowController.windows = {}                         -- [UID] = Window\
+WindowController.activeWindow = nil                   -- the focused Window, or nil\
+WindowController.windowRegistered = Signal.new()      -- (window)\
+WindowController.windowUnregistered = Signal.new()    -- (window)\
+WindowController.windowMinimized = Signal.new()       -- (window)\
+WindowController.windowRestored = Signal.new()        -- (window)\
+WindowController.activeChanged = Signal.new()         -- (window | nil)\
+WindowController.baseDisplayOrder = 50\
+\
+local topZ = 0\
+local layer: ScreenGui? = nil\
+local backdrop: Frame? = nil\
+\
+local function buildLayer(): ScreenGui\
+	if layer then\
+		return layer\
+	end\
+	local playerGui = Players.LocalPlayer:WaitForChild(\"PlayerGui\")\
+	local screenGui = UI.new(\"ScreenGui\", {\
+		Name = \"MaterialWindows\",\
+		ResetOnSpawn = false,\
+		IgnoreGuiInset = true,\
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,\
+		DisplayOrder = WindowController.baseDisplayOrder,\
+		Parent = playerGui,\
+	})\
+	backdrop = UI.new(\"Frame\", {\
+		Name = \"Backdrop\",\
+		Size = UDim2.fromScale(1, 1),\
+		BackgroundColor3 = Skin.Backdrop,\
+		BackgroundTransparency = 1,\
+		Visible = false,\
+		ZIndex = 0,\
+		Parent = screenGui,\
+	}) :: Frame\
+	layer = screenGui\
+	return screenGui\
+end\
+\
+--- Returns the shared ScreenGui every window is parented to, building it (and\
+--- the modal backdrop) on first call.\
+function WindowController.getLayer(): ScreenGui\
+	return buildLayer()\
+end\
+\
+--- Returns the shared modal backdrop frame (behind the active modal window).\
+function WindowController.getBackdrop(): Frame\
+	buildLayer()\
+	return backdrop :: Frame\
+end\
+\
+--- Registers a window and focuses it. Called by [[Window]] on open.\
+function WindowController.register(window: any)\
+	WindowController.windows[window.UID] = window\
+	WindowController.windowRegistered:Fire(window)\
+	WindowController.focus(window)\
+end\
+\
+-- when the active window goes away (close/minimize), raise the next top-most\
+local function promoteNext(goneWindow: any)\
+	if WindowController.activeWindow ~= goneWindow then\
+		return\
+	end\
+	WindowController.activeWindow = nil\
+	local topMost, bestZ = nil, -math.huge\
+	for _, other in WindowController.windows do\
+		if other ~= goneWindow and other.isOpen and not other.isMinimized and other._z > bestZ then\
+			topMost, bestZ = other, other._z\
+		end\
+	end\
+	if topMost then\
+		WindowController.focus(topMost)\
+	else\
+		WindowController.activeChanged:Fire(nil)\
+	end\
+end\
+\
+--- Unregisters a window and, if it was active, promotes the next top-most\
+--- window (or clears the active window). Called by [[Window]] on close.\
+function WindowController.unregister(window: any)\
+	if WindowController.windows[window.UID] == nil then\
+		return\
+	end\
+	WindowController.windows[window.UID] = nil\
+	WindowController.windowUnregistered:Fire(window)\
+	promoteNext(window)\
+end\
+\
+--- Called by [[Window:minimize]]: keeps the window registered (so the [[Dock]]\
+--- can list it) but yields focus to the next top-most window.\
+function WindowController.notifyMinimized(window: any)\
+	WindowController.windowMinimized:Fire(window)\
+	promoteNext(window)\
+end\
+\
+--- Called by [[Window:restore]] when a minimized window returns.\
+function WindowController.notifyRestored(window: any)\
+	WindowController.windowRestored:Fire(window)\
+end\
+\
+--- Brings a window to the front and marks it active — raising its ZIndex above\
+--- every other window and firing the `activeChanged` signal.\
+function WindowController.focus(window: any)\
+	topZ += 1\
+	window._z = topZ\
+	if window.root then\
+		window.root.ZIndex = topZ\
+	end\
+	if WindowController.activeWindow ~= window then\
+		WindowController.activeWindow = window\
+		WindowController.activeChanged:Fire(window)\
+	end\
+end\
+\
+--- Returns the registry of open windows, keyed by UID.\
+function WindowController.getWindows()\
+	return WindowController.windows\
+end\
+\
+--- Closes every open window.\
+function WindowController.closeAll()\
+	for _, window in WindowController.windows do\
+		window:close()\
+	end\
+end\
+\
+return WindowController\
+"},
 }
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local old = ReplicatedStorage:FindFirstChild("Material")

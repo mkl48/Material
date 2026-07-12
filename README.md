@@ -2,27 +2,40 @@
 
 # Material
 
-**A fork of TopbarPlus that fixes the bugs and upgrades the API.**
+**A Roblox in-game UI framework. TopbarPlus icons, plus windows, dialogs, and more.**
 
 <img src="https://img.shields.io/badge/Material-v0.0.0-e6ab4c?style=for-the-badge" alt="version" />
 <img src="https://img.shields.io/badge/Luau-Roblox-00A2FF?style=for-the-badge" alt="luau" />
 <img src="https://img.shields.io/badge/License-MPL%202.0-c05b4d?style=for-the-badge" alt="license" />
 <img src="https://img.shields.io/badge/Fork%20of-TopbarPlus%20v3.4.0-1abc9c?style=for-the-badge" alt="fork" />
 
-Drop-in compatible with TopbarPlus. Same API, fewer surprises.
+**[Read the docs](https://mkl48.github.io/Material/)** · drop-in compatible with TopbarPlus
 
 </div>
 
 ---
 
-Material is a fork of [TopbarPlus](https://github.com/1ForeverHD/TopbarPlus) by
-ForeverHD (vendored at v3.4.0, commit `f44992b`). Existing TopbarPlus code runs
-unchanged; on top of that Material fixes the visual-glitch bug family, removes
-the timing hacks and the update phone-home, tightens memory/cleanup behaviour,
-and grows the API where TopbarPlus was awkward.
+Material starts as a fork of [TopbarPlus](https://github.com/1ForeverHD/TopbarPlus)
+by ForeverHD (vendored at v3.4.0, commit `f44992b`) — every existing TopbarPlus
+icon runs unchanged — and grows outward into a small in-experience UI framework
+that emulates Roblox's own core UI:
 
-> **Status: pre-release.** The vendored baseline is unmodified upstream source.
-> See [NOTES.md](NOTES.md) for the audit and the surgery plan.
+- **Icons** — the full TopbarPlus surface, with the timing-hack layout bugs and
+  the update phone-home on the fix list.
+- **Windows** — draggable, resizable, focus-managed windows emulating Roblox's
+  in-game store / quick-access panel. A [`WindowController`](src/Windows) tracks
+  z-order and focus, and `window:adopt(myFrame)` drops your existing UI straight
+  into a managed window (restored untouched on close).
+- **Overlays** — `Toast` snackbars, modal `Dialog`s, and rich `Tooltip`s for any
+  GuiObject.
+- **Dock** — an optional taskbar of minimized windows.
+
+Bind it all together: `icon:bindWindow(window)` turns a topbar icon into a
+shop-style button that opens a window.
+
+> **Status: pre-release, Studio-verified only.** The Icon layer is the vendored
+> upstream baseline; the window/overlay layer is new and needs real Studio
+> testing. See [NOTES.md](NOTES.md) for the audit and plan.
 
 ## Installation
 

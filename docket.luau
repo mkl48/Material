@@ -5,7 +5,7 @@ return {
 	Theme = "tokyonight",
 	Version = "0.0.0",
 	License = "MPL-2.0",
-	Sections = { "Overview", "Elements", "Features" },
+	Sections = { "Overview", "Windows", "Overlays", "Elements", "Features", "Support" },
 	Pages = { { file = "INSTALL.md", section = "Overview" } },
 	Repo = "https://github.com/mkl48/Material",
 }
