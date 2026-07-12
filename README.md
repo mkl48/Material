@@ -22,17 +22,15 @@ that emulates Roblox's own core UI:
 
 - **Icons** — the full TopbarPlus surface, with the timing-hack layout bugs and
   the update phone-home on the fix list.
-- **Windows** — draggable, resizable, focus-managed windows emulating Roblox's
-  in-game store / quick-access panel. A [`WindowController`](src/Windows) tracks
-  z-order and focus, and `window:adopt(myFrame)` drops your existing UI straight
-  into a managed window (restored untouched on close).
-- **Overlays** — `Toast` snackbars, modal `Dialog`s, and rich `Tooltip`s for any
-  GuiObject.
-- **Dock** — an optional taskbar of minimized windows.
+- **Windows** — a titled panel that drops from an icon and opens when the icon is
+  selected, exactly like a dropdown (`icon:setWindow{ title = "Shop" }`). Built
+  as a TopbarPlus element and themed through the icon, so it matches the topbar.
+  Fill it with `:addToWindow(gui)` or, like a dropdown/menu, with `:addIcon(icon)`.
+- **Overlays** — `Toast` snackbars, modal `Dialog`s (buttons are real icons), and
+  rich `Tooltip`s for any GuiObject.
 
-Bind it all together: `icon:setWindow({ title = "Shop" })` turns a topbar icon
-into a shop-style button that opens a window — styled to match Roblox's own
-core UI (near-black header, X on the left, dark graded body).
+Everything reuses TopbarPlus's theme (panel colour `18,18,21`, BuilderSans, the
+shared shadow), so the panels read as part of the same topbar — not a separate UI.
 
 > **Status: pre-release, Studio-verified only.** The Icon layer is the vendored
 > upstream baseline; the window/overlay layer is new and needs real Studio

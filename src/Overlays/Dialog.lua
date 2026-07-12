@@ -1,6 +1,7 @@
---- Centered confirm/prompt dialogs — a thin preset over a modal [[Window]]
---- (non-resizable, dimmed backdrop, a message and a row of buttons). Use it for
---- "Are you sure?" moments without hand-building a window.
+--- Centered confirm/prompt modals — like Roblox's respawn dialog. A dimmed
+--- backdrop, a themed panel, a message, and a row of buttons that are real
+--- [[Icon]]s (so they match the theme). Self-contained: not tied to a topbar
+--- icon.
 ---
 --- ```lua a confirm dialog
 --- Material.Dialog.confirm("Delete this save? This cannot be undone.", function()
@@ -10,36 +11,83 @@
 --- @section Overlays
 --- @client
 
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+
 local root = script.Parent.Parent
 local Types = require(root.Types)
 local UI = require(root.UI)
 local Skin = require(root.Skin)
-local Window = require(root.Windows.Window)
 
 local Dialog = {}
 
 export type Button = Types.DialogButton
 export type Options = Types.DialogOptions
 
---- Shows a modal dialog and returns its [[Window]] (already open). Headerless
---- and centered, like Roblox's respawn/confirm modals. The buttons are real
---- [[Icon]]s so they match the theme.
+local OPEN = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local layer: ScreenGui? = nil
+
+local function getLayer(): ScreenGui
+	if layer then
+		return layer
+	end
+	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+	layer = UI.new("ScreenGui", {
+		Name = "MaterialDialogs",
+		ResetOnSpawn = false,
+		IgnoreGuiInset = true,
+		DisplayOrder = 60,
+		Parent = playerGui,
+	}) :: ScreenGui
+	return layer :: ScreenGui
+end
+
+--- Shows a modal dialog. Returns a handle with `:close()`.
 function Dialog.show(options: Options): any
 	local Icon = require(root) :: any  -- lazy: the Material module (avoids a load cycle)
 	local width = options.width or 460
-	local window = Window.new()   -- no owner: a free-standing modal
-		:setSize(width, 240)
-		:setModal(true, options.dismissable ~= false)
-		:setHeaderVisible(false)
+	local height = 240
 
-	local body = window:getBody()
-	UI.new("UIPadding", {
-		PaddingTop = UDim.new(0, 30), PaddingBottom = UDim.new(0, 26),
-		PaddingLeft = UDim.new(0, 30), PaddingRight = UDim.new(0, 30),
-		Parent = body,
+	local backdrop = UI.new("Frame", {
+		Name = "DialogBackdrop",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = Skin.Backdrop,
+		BackgroundTransparency = 1,
+		Parent = getLayer(),
 	})
 
-	-- title / message, centered in the upper area
+	local panel = UI.new("Frame", {
+		Name = "DialogPanel",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(width, height),
+		BackgroundColor3 = Skin.Panel,
+		BorderSizePixel = 0,
+		Parent = backdrop,
+	}, {
+		UI.corner(Skin.CornerRadius),
+		UI.stroke(Skin.Stroke, 1, Skin.StrokeTransparency),
+		UI.new("UIPadding", {
+			PaddingTop = UDim.new(0, 30), PaddingBottom = UDim.new(0, 26),
+			PaddingLeft = UDim.new(0, 30), PaddingRight = UDim.new(0, 30),
+		}),
+	})
+
+	UI.new("ImageLabel", {
+		Name = "DialogShadow",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.new(1, 40, 1, 40),
+		BackgroundTransparency = 1,
+		Image = Skin.ShadowImage,
+		ImageColor3 = Color3.new(0, 0, 0),
+		ImageTransparency = 0.45,
+		ScaleType = Enum.ScaleType.Slice,
+		SliceCenter = Rect.new(12, 12, 13, 13),
+		ZIndex = 0,
+		Parent = panel,
+	})
+
 	UI.new("TextLabel", {
 		Name = "Message",
 		AnchorPoint = Vector2.new(0.5, 0),
@@ -53,31 +101,44 @@ function Dialog.show(options: Options): any
 		TextWrapped = true,
 		TextYAlignment = Enum.TextYAlignment.Center,
 		TextXAlignment = Enum.TextXAlignment.Center,
-		Parent = body,
+		ZIndex = 2,
+		Parent = panel,
 	})
 
-	-- buttons, centered along the bottom, each a real Icon
 	local buttonRow = UI.new("Frame", {
 		Name = "Buttons",
 		AnchorPoint = Vector2.new(0.5, 1),
 		Position = UDim2.fromScale(0.5, 1),
 		Size = UDim2.new(1, 0, 0, 48),
 		BackgroundTransparency = 1,
-		Parent = body,
+		ZIndex = 2,
+		Parent = panel,
 	}, {
 		UI.list(Enum.FillDirection.Horizontal, 12),
 	})
 	;(buttonRow:FindFirstChildOfClass("UIListLayout") :: UIListLayout).HorizontalAlignment = Enum.HorizontalAlignment.Center
 
+	local buttonIcons = {}
+	local function close()
+		for _, btn in buttonIcons do
+			btn:destroy()
+		end
+		local tween = TweenService:Create(backdrop, OPEN, { BackgroundTransparency = 1 })
+		tween:Play()
+		tween.Completed:Once(function()
+			backdrop:Destroy()
+		end)
+	end
+
 	local buttons = options.buttons or { { text = "OK", primary = true } }
 	for index, spec in buttons do
 		local fill = if spec.danger then Skin.Danger elseif spec.primary then Skin.Accent else Skin.Panel
-		-- a holder the button Icon's widget sits in (gives us the selection ring)
 		local holder = UI.new("Frame", {
 			Name = "ButtonHolder",
 			Size = UDim2.fromOffset(150, 46),
 			BackgroundTransparency = 1,
 			LayoutOrder = index,
+			ZIndex = 2,
 			Parent = buttonRow,
 		}, {
 			UI.corner(UDim.new(0, 10)),
@@ -103,20 +164,34 @@ function Dialog.show(options: Options): any
 			{ "IconCorners", "CornerRadius", UDim.new(0, 10) },
 		})
 		btn:oneClick(true)
-		btn:autoDeselect(false)  -- don't deselect the user's topbar icons
+		btn:autoDeselect(false)  -- don't disturb the user's topbar icons
 		btn.widget.Parent = holder
 		btn.widget.Position = UDim2.fromScale(0, 0)
+		table.insert(buttonIcons, btn)
 		btn.selected:Connect(function()
 			if spec.onClick then
 				spec.onClick()
 			end
-			window:close()
-			window:destroy()
+			close()
 		end)
 	end
 
-	window:open()
-	return window
+	-- dismiss on backdrop click
+	if options.dismissable ~= false then
+		backdrop.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1
+				or input.UserInputType == Enum.UserInputType.Touch then
+				close()
+			end
+		end)
+	end
+
+	-- fade + scale in
+	TweenService:Create(backdrop, OPEN, { BackgroundTransparency = 0.5 }):Play()
+	panel.Size = UDim2.fromOffset(width * 0.96, height * 0.96)
+	TweenService:Create(panel, OPEN, { Size = UDim2.fromOffset(width, height) }):Play()
+
+	return { close = close }
 end
 
 --- Convenience: a two-button confirm/cancel dialog.

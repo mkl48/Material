@@ -139,9 +139,9 @@ Icon.iconAdded = Signal.new()
 Icon.iconRemoved = Signal.new()
 Icon.iconChanged = Signal.new()
 
--- Panels + overlays (Material's additions over TopbarPlus), themed to match
--- the icons. Exposed as Material.Window, Material.Toast, etc.
-Icon.Window = require(iconModule.Windows.Window)
+-- Overlays (Material's additions over TopbarPlus), themed to match the icons.
+-- The Window is an element reached through icon:setWindow (like the dropdown),
+-- not a static here.
 Icon.Toast = require(iconModule.Overlays.Toast)
 Icon.Dialog = require(iconModule.Overlays.Dialog)
 Icon.Tooltip = require(iconModule.Overlays.Tooltip)
@@ -250,6 +250,7 @@ function Icon.new()
 	self.joinJanitor = janitor:add(Janitor.new())
 	self.menuJanitor = janitor:add(Janitor.new())
 	self.dropdownJanitor = janitor:add(Janitor.new())
+	self.windowJanitor = janitor:add(Janitor.new())
 
 	-- Register
 	local iconUID = Utility.generateUID()
@@ -1099,38 +1100,38 @@ function Icon:addToJanitor(callback, methodName, index)
 	return self
 end
 
---- Gives this icon a [[Window]] — a Roblox-style panel that opens when the icon
---- is selected and closes when it's deselected. Returns the window so you can
---- populate it (`:adopt`, `:getBody`, `:setModal`, …). The panel is themed to
---- match the topbar, and its close button is a real icon.
+--- Gives this icon a [[Window]] — a titled panel that drops from the icon and
+--- opens when the icon is selected, closes when it's deselected (like a
+--- [[Dropdown]], but a panel). Returns a window handle you can populate with
+--- `addToWindow(gui)` (content) or `addIcon(icon)` (icons, like a dropdown).
+--- Themed to match the topbar; its close button is a real icon.
 ---
---- @param config optional `{ title, icon, width, height, dock, modal }`
---- @return the created Window (already wired to this icon)
+--- @param config optional `{ title, width, height }`
+--- @return the window handle (already wired to this icon)
 function Icon:setWindow(config)
-	config = config or {}
-	local window = Icon.Window.new(self)
-	if config.title then
-		window:setTitle(config.title)
-	end
-	if config.icon then
-		window:setIcon(config.icon)
-	end
-	if config.width or config.height then
-		window:setSize(config.width or 480, config.height or 320)
-	end
-	if config.dock then
-		window:setDock(config.dock)
-	end
-	if config.modal ~= nil then
-		window:setModal(config.modal)
-	end
-	self.boundWindow = window
-	return window
+	local handle = require(iconModule.Elements.Window)(self, config or {})
+	self:clipOutside(handle.frame)
+	self.boundWindow = handle
+	return handle
 end
 
---- Returns the [[Window]] created for this icon by [[Icon:setWindow]], or nil.
+--- Returns the window handle created for this icon by [[Icon:setWindow]], or nil.
 function Icon:getWindow()
 	return self.boundWindow
+end
+
+--- Adds a GuiObject to this icon's window (creating the window if needed).
+function Icon:addToWindow(guiObject)
+	local handle = self.boundWindow or self:setWindow()
+	handle:addToWindow(guiObject)
+	return self
+end
+
+--- Adds an icon into this icon's window, like adding one to a dropdown/menu.
+function Icon:addWindowIcon(childIcon)
+	local handle = self.boundWindow or self:setWindow()
+	handle:addIcon(childIcon)
+	return self
 end
 
 --- Blocks all user input on the icon (clicks, touches, toggle keys). Undo

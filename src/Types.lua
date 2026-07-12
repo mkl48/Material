@@ -27,52 +27,24 @@ export type Modification = { any }
 
 ---------------------- WINDOWS & OVERLAYS (Material additions) ----------------------
 
--- A Roblox-style panel owned by an icon: opens on select, closes on deselect.
+-- The handle icon:setWindow returns — a titled panel that drops from the icon,
+-- opening on select / closing on deselect (like a dropdown). Composed of icons.
 export type Window = {
-	-- fields
-	title: string,
-	isOpen: boolean,
-	isModal: boolean,
-	ownerIcon: any,
-	root: Frame,
-	body: Frame,
-	-- events
-	opened: Signal,
-	closed: Signal,
-	-- methods (chainable)
+	frame: Frame,
+	body: ScrollingFrame,
+	icon: any,
 	setTitle: (self: Window, text: string) -> Window,
-	setIcon: (self: Window, imageId: (number | string)?) -> Window,
 	setSize: (self: Window, width: number, height: number) -> Window,
-	setDock: (self: Window, where: "center" | "top") -> Window,
-	setHeaderVisible: (self: Window, enabled: boolean) -> Window,
-	setModal: (self: Window, enabled: boolean, dismissable: boolean?) -> Window,
-	adopt: (self: Window, guiObject: GuiObject) -> Window,
-	release: (self: Window) -> Window,
-	getBody: (self: Window) -> Frame,
-	open: (self: Window) -> Window,
-	close: (self: Window) -> Window,
-	destroy: (self: Window) -> (),
-}
-
-export type StaticWindow = {
-	new: typeof(
-		--[[
-			Constructs a panel owned by an icon. Prefer icon:setWindow() which calls this.
-		]]
-		function(ownerIcon: any?): Window
-			return (nil :: any) :: Window
-		end
-	),
+	getBody: (self: Window) -> ScrollingFrame,
+	addToWindow: (self: Window, guiObject: GuiObject) -> Window,
+	addIcon: (self: Window, childIcon: any) -> Window,
 }
 
 -- Config accepted by icon:setWindow(); every field optional.
 export type WindowConfig = {
 	title: string?,
-	icon: (number | string)?,
 	width: number?,
 	height: number?,
-	dock: ("center" | "top")?,
-	modal: boolean?,
 }
 
 export type ToastOptions = {
@@ -99,9 +71,10 @@ export type DialogOptions = {
 	dismissable: boolean?,
 	width: number?,
 }
+export type DialogHandle = { close: () -> () }
 export type Dialog = {
-	show: (options: DialogOptions) -> Window,
-	confirm: (message: string, onConfirm: () -> (), onCancel: (() -> ())?) -> Window,
+	show: (options: DialogOptions) -> DialogHandle,
+	confirm: (message: string, onConfirm: () -> (), onCancel: (() -> ())?) -> DialogHandle,
 }
 
 export type Tooltip = {
@@ -520,9 +493,9 @@ type Methods = {
 	),
 	setWindow: typeof(
 		--[[
-			Creates a Window, binds it to this icon (the shop-button pattern), and returns
-			the Window so you can populate it. Pass a config table to set title/size/etc.
-			Prefer this over Material.Window.new() when the window belongs to an icon.
+			Gives this icon a window: a titled panel that drops from the icon and opens
+			when the icon is selected, closes when deselected (like a dropdown). Returns
+			the window handle; populate it with :addToWindow(gui) or :addIcon(icon).
 		]]
 		function(self: Icon, config: WindowConfig?): Window
 			return (nil :: any) :: Window
@@ -530,10 +503,26 @@ type Methods = {
 	),
 	getWindow: typeof(
 		--[[
-			Returns the Window created for this icon by setWindow, or nil.
+			Returns the window handle created for this icon by setWindow, or nil.
 		]]
 		function(self: Icon): Window?
 			return (nil :: any) :: Window?
+		end
+	),
+	addToWindow: typeof(
+		--[[
+			Adds a GuiObject to this icon's window (creating the window if needed).
+		]]
+		function(self: Icon, guiObject: GuiObject): Icon
+			return nil :: any
+		end
+	),
+	addWindowIcon: typeof(
+		--[[
+			Adds an icon into this icon's window, like adding one to a dropdown/menu.
+		]]
+		function(self: Icon, childIcon: Icon): Icon
+			return nil :: any
 		end
 	),
 	destroy: typeof(
@@ -574,8 +563,7 @@ export type StaticIcon = {
 			return (nil :: any) :: Icon
 		end
 	),
-	-- Material's panels + overlays
-	Window: StaticWindow,
+	-- Material's overlays (the Window is reached via icon:setWindow)
 	Toast: Toast,
 	Dialog: Dialog,
 	Tooltip: Tooltip,

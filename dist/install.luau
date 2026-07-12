@@ -143,9 +143,9 @@ Icon.iconAdded = Signal.new()\
 Icon.iconRemoved = Signal.new()\
 Icon.iconChanged = Signal.new()\
 \
--- Panels + overlays (Material's additions over TopbarPlus), themed to match\
--- the icons. Exposed as Material.Window, Material.Toast, etc.\
-Icon.Window = require(iconModule.Windows.Window)\
+-- Overlays (Material's additions over TopbarPlus), themed to match the icons.\
+-- The Window is an element reached through icon:setWindow (like the dropdown),\
+-- not a static here.\
 Icon.Toast = require(iconModule.Overlays.Toast)\
 Icon.Dialog = require(iconModule.Overlays.Dialog)\
 Icon.Tooltip = require(iconModule.Overlays.Tooltip)\
@@ -254,6 +254,7 @@ function Icon.new()\
 	self.joinJanitor = janitor:add(Janitor.new())\
 	self.menuJanitor = janitor:add(Janitor.new())\
 	self.dropdownJanitor = janitor:add(Janitor.new())\
+	self.windowJanitor = janitor:add(Janitor.new())\
 \
 	-- Register\
 	local iconUID = Utility.generateUID()\
@@ -1103,38 +1104,38 @@ function Icon:addToJanitor(callback, methodName, index)\
 	return self\
 end\
 \
---- Gives this icon a [[Window]] — a Roblox-style panel that opens when the icon\
---- is selected and closes when it's deselected. Returns the window so you can\
---- populate it (`:adopt`, `:getBody`, `:setModal`, …). The panel is themed to\
---- match the topbar, and its close button is a real icon.\
+--- Gives this icon a [[Window]] — a titled panel that drops from the icon and\
+--- opens when the icon is selected, closes when it's deselected (like a\
+--- [[Dropdown]], but a panel). Returns a window handle you can populate with\
+--- `addToWindow(gui)` (content) or `addIcon(icon)` (icons, like a dropdown).\
+--- Themed to match the topbar; its close button is a real icon.\
 ---\
---- @param config optional `{ title, icon, width, height, dock, modal }`\
---- @return the created Window (already wired to this icon)\
+--- @param config optional `{ title, width, height }`\
+--- @return the window handle (already wired to this icon)\
 function Icon:setWindow(config)\
-	config = config or {}\
-	local window = Icon.Window.new(self)\
-	if config.title then\
-		window:setTitle(config.title)\
-	end\
-	if config.icon then\
-		window:setIcon(config.icon)\
-	end\
-	if config.width or config.height then\
-		window:setSize(config.width or 480, config.height or 320)\
-	end\
-	if config.dock then\
-		window:setDock(config.dock)\
-	end\
-	if config.modal ~= nil then\
-		window:setModal(config.modal)\
-	end\
-	self.boundWindow = window\
-	return window\
+	local handle = require(iconModule.Elements.Window)(self, config or {})\
+	self:clipOutside(handle.frame)\
+	self.boundWindow = handle\
+	return handle\
 end\
 \
---- Returns the [[Window]] created for this icon by [[Icon:setWindow]], or nil.\
+--- Returns the window handle created for this icon by [[Icon:setWindow]], or nil.\
 function Icon:getWindow()\
 	return self.boundWindow\
+end\
+\
+--- Adds a GuiObject to this icon's window (creating the window if needed).\
+function Icon:addToWindow(guiObject)\
+	local handle = self.boundWindow or self:setWindow()\
+	handle:addToWindow(guiObject)\
+	return self\
+end\
+\
+--- Adds an icon into this icon's window, like adding one to a dropdown/menu.\
+function Icon:addWindowIcon(childIcon)\
+	local handle = self.boundWindow or self:setWindow()\
+	handle:addIcon(childIcon)\
+	return self\
 end\
 \
 --- Blocks all user input on the icon (clicks, touches, toggle keys). Undo\
@@ -3266,6 +3267,234 @@ return function(icon, Icon)\
 \
 	return widget\
 end"},
+{"Material/Elements/Window","ModuleScript","--- A window panel that belongs to an icon — it drops from the icon and grows\
+--- open when the icon is selected, closes when deselected, exactly like a\
+--- [[Dropdown]] but as a titled panel. Built onto `icon.widget` and themed\
+--- through the icon, so it matches the topbar (colour, ratios, BuilderSans).\
+---\
+--- Created through [[Icon:setWindow]], which returns a handle:\
+---\
+--- ```lua a shop panel that drops from its icon\
+--- local shop = Material.new()\
+---     :setImage(14723463500)\
+---     :setCaption(\"Shop\")\
+---     :setWindow({ title = \"Shop\", width = 320, height = 360 })\
+---\
+--- shop:addToWindow(playerGui.ShopGui.Root)   -- add your own content\
+--- -- or fill it with icons, like a dropdown:\
+--- shop:addIcon(Material.new():setLabel(\"Swords\"))\
+--- shop:addIcon(Material.new():setLabel(\"Potions\"))\
+--- ```\
+--- @section Windows\
+--- @client\
+\
+local TweenService = game:GetService(\"TweenService\")\
+local GuiService = game:GetService(\"GuiService\")\
+\
+local root = script.Parent.Parent\
+local UI = require(root.UI)\
+local Skin = require(root.Skin)\
+local Utility = require(root.Utility)\
+\
+local OPEN_TWEEN = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)\
+local CLOSE_TWEEN = TweenInfo.new(0.12, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)\
+\
+return function(icon: any, config: any)\
+	config = config or {}\
+	local Icon = require(icon.iconModule)\
+	local janitor = icon.windowJanitor\
+	local openSize = Vector2.new(config.width or 300, config.height or 320)\
+\
+	-- the panel, parented into the icon's widget (clipOutside is applied by\
+	-- Icon:setWindow so it can exceed the widget's bounds, like a dropdown)\
+	local window = UI.new(\"Frame\", {\
+		Name = \"Window\",\
+		AnchorPoint = Vector2.new(0.5, 0),\
+		Position = UDim2.new(0.5, 0, 1, 10),\
+		Size = UDim2.fromOffset(openSize.X, 0),\
+		BackgroundColor3 = Skin.Panel,\
+		BorderSizePixel = 0,\
+		ClipsDescendants = true,\
+		ZIndex = -2,\
+		Visible = false,\
+		Parent = icon.widget,\
+	}, {\
+		UI.corner(Skin.CornerRadius),\
+		UI.stroke(Skin.Stroke, 1, Skin.StrokeTransparency),\
+	}) :: Frame\
+\
+	UI.new(\"ImageLabel\", {\
+		Name = \"WindowShadow\",\
+		AnchorPoint = Vector2.new(0.5, 0.5),\
+		Position = UDim2.fromScale(0.5, 0.5),\
+		Size = UDim2.new(1, 40, 1, 40),\
+		BackgroundTransparency = 1,\
+		Image = Skin.ShadowImage,\
+		ImageColor3 = Color3.new(0, 0, 0),\
+		ImageTransparency = 0.45,\
+		ScaleType = Enum.ScaleType.Slice,\
+		SliceCenter = Rect.new(12, 12, 13, 13),\
+		ZIndex = -3,\
+		Parent = window,\
+	})\
+\
+	-- respect each player's PreferredTransparency, like the dropdown\
+	icon:setBehaviour(\"Window\", \"BackgroundTransparency\", function(value)\
+		if value == 1 then\
+			return value\
+		end\
+		return value * GuiService.PreferredTransparency\
+	end)\
+	janitor:add(GuiService:GetPropertyChangedSignal(\"PreferredTransparency\"):Connect(function()\
+		icon:refreshAppearance(window, \"BackgroundTransparency\")\
+	end))\
+\
+	-- header (title + a real close Icon on the left)\
+	local header = UI.new(\"Frame\", {\
+		Name = \"WindowHeader\",\
+		Size = UDim2.new(1, 0, 0, Skin.HeaderHeight),\
+		BackgroundTransparency = 1,\
+		ZIndex = -1,\
+		Parent = window,\
+	})\
+	local title = UI.new(\"TextLabel\", {\
+		Name = \"WindowTitle\",\
+		AnchorPoint = Vector2.new(0, 0.5),\
+		Position = UDim2.new(0, 52, 0.5, 0),\
+		Size = UDim2.new(1, -62, 1, 0),\
+		BackgroundTransparency = 1,\
+		FontFace = Skin.TitleFontFace,\
+		Text = config.title or \"\",\
+		TextColor3 = Skin.Text,\
+		TextSize = 17,\
+		TextXAlignment = Enum.TextXAlignment.Left,\
+		TextTruncate = Enum.TextTruncate.AtEnd,\
+		ZIndex = -1,\
+		Parent = header,\
+	}) :: TextLabel\
+	UI.new(\"Frame\", {\
+		Name = \"WindowDivider\",\
+		Position = UDim2.new(0, 0, 0, Skin.HeaderHeight),\
+		Size = UDim2.new(1, 0, 0, 1),\
+		BackgroundColor3 = Skin.Divider,\
+		BackgroundTransparency = 0.85,\
+		BorderSizePixel = 0,\
+		ZIndex = -1,\
+		Parent = window,\
+	})\
+\
+	local closeHolder = UI.new(\"Frame\", {\
+		Name = \"WindowCloseHolder\",\
+		AnchorPoint = Vector2.new(0, 0.5),\
+		Position = UDim2.new(0, 6, 0.5, 0),\
+		Size = UDim2.fromOffset(38, 38),\
+		BackgroundTransparency = 1,\
+		ZIndex = -1,\
+		Parent = header,\
+	})\
+	local closeIcon = Icon.new()\
+	closeIcon:modifyTheme({\
+		{ \"IconLabel\", \"Text\", \"\\u{2715}\", \"Deselected\" },\
+		{ \"IconLabel\", \"Text\", \"\\u{2715}\", \"Selected\" },\
+		{ \"IconLabel\", \"FontFace\", Skin.TitleFontFace },\
+		{ \"IconLabel\", \"TextSize\", 18 },\
+		{ \"IconImage\", \"Image\", \"\" },\
+		{ \"Widget\", \"MinimumWidth\", 38 },\
+		{ \"Widget\", \"MinimumHeight\", 38 },\
+		{ \"IconButton\", \"BackgroundTransparency\", 1, \"Deselected\" },\
+	})\
+	closeIcon:oneClick(true)\
+	closeIcon:autoDeselect(false)\
+	closeIcon.widget.Parent = closeHolder\
+	closeIcon.widget.Position = UDim2.fromScale(0, 0)\
+	janitor:add(function()\
+		closeIcon:destroy()\
+	end)\
+	janitor:add(closeIcon.selected:Connect(function()\
+		icon:deselect(\"WindowClose\", icon)\
+	end))\
+\
+	-- body: a scrolling content area. Adopted content and joined icons both\
+	-- flow through its list, so a window can hold icons like a dropdown.\
+	local body = UI.new(\"ScrollingFrame\", {\
+		Name = \"WindowBody\",\
+		AnchorPoint = Vector2.new(0, 1),\
+		Position = UDim2.fromScale(0, 1),\
+		Size = UDim2.new(1, 0, 1, -Skin.HeaderHeight),\
+		BackgroundTransparency = 1,\
+		BorderSizePixel = 0,\
+		ScrollBarThickness = 4,\
+		ScrollBarImageColor3 = Color3.fromRGB(255, 255, 255),\
+		ScrollBarImageTransparency = 0.8,\
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,\
+		CanvasSize = UDim2.new(),\
+		ClipsDescendants = true,\
+		ZIndex = -1,\
+		Parent = window,\
+	}, {\
+		UI.list(Enum.FillDirection.Vertical, 6),\
+		UI.padding(10),\
+	}) :: ScrollingFrame\
+\
+	-- open/close on the icon's toggle: grow the height from 0 (like a dropdown)\
+	local windowIcons = {}\
+	local function resize(open: boolean)\
+		if open then\
+			window.Visible = true\
+			TweenService:Create(window, OPEN_TWEEN, { Size = UDim2.fromOffset(openSize.X, openSize.Y) }):Play()\
+		else\
+			local tween = TweenService:Create(window, CLOSE_TWEEN, { Size = UDim2.fromOffset(openSize.X, 0) })\
+			tween:Play()\
+			tween.Completed:Once(function()\
+				if not icon.isSelected then\
+					window.Visible = false\
+				end\
+			end)\
+		end\
+	end\
+	janitor:add(icon.toggled:Connect(function()\
+		resize(icon.isSelected)\
+	end))\
+	resize(icon.isSelected)\
+\
+	-- the handle Icon:setWindow returns\
+	local handle = {}\
+	handle.frame = window\
+	handle.body = body\
+	handle.icon = icon\
+\
+	function handle:setTitle(text: string)\
+		title.Text = text\
+		return handle\
+	end\
+	function handle:setSize(width: number, height: number)\
+		openSize = Vector2.new(width, height)\
+		window.Size = UDim2.fromOffset(width, if icon.isSelected then height else 0)\
+		return handle\
+	end\
+	function handle:getBody(): ScrollingFrame\
+		return body\
+	end\
+	--- Parents a GuiObject into the window body.\
+	function handle:addToWindow(guiObject: GuiObject)\
+		guiObject.Parent = body\
+		return handle\
+	end\
+	--- Joins an icon into the window, like adding one to a dropdown/menu.\
+	function handle:addIcon(childIcon: any)\
+		Utility.joinFeature(childIcon, icon, windowIcons, body)\
+		childIcon:modifyTheme({\
+			{ \"Widget\", \"MinimumWidth\", openSize.X - 20 },\
+			{ \"Widget\", \"MinimumHeight\", 50 },\
+			{ \"IconLabel\", \"TextSize\", 18 },\
+			{ \"ContentsList\", \"HorizontalAlignment\", Enum.HorizontalAlignment.Left },\
+		})\
+		return handle\
+	end\
+\
+	return handle\
+end\
+"},
 {"Material/Features","Folder",nil},
 {"Material/Features/Gamepad","ModuleScript","--- Controller support: DPadUp highlights the topbar, selection moves between\
 --- icons, and the [[Indicator]] prompt is shown or hidden as the player's\
@@ -4301,9 +4530,10 @@ return {\
 	\
 }"},
 {"Material/Overlays","Folder",nil},
-{"Material/Overlays/Dialog","ModuleScript","--- Centered confirm/prompt dialogs — a thin preset over a modal [[Window]]\
---- (non-resizable, dimmed backdrop, a message and a row of buttons). Use it for\
---- \"Are you sure?\" moments without hand-building a window.\
+{"Material/Overlays/Dialog","ModuleScript","--- Centered confirm/prompt modals — like Roblox's respawn dialog. A dimmed\
+--- backdrop, a themed panel, a message, and a row of buttons that are real\
+--- [[Icon]]s (so they match the theme). Self-contained: not tied to a topbar\
+--- icon.\
 ---\
 --- ```lua a confirm dialog\
 --- Material.Dialog.confirm(\"Delete this save? This cannot be undone.\", function()\
@@ -4313,36 +4543,83 @@ return {\
 --- @section Overlays\
 --- @client\
 \
+local Players = game:GetService(\"Players\")\
+local TweenService = game:GetService(\"TweenService\")\
+\
 local root = script.Parent.Parent\
 local Types = require(root.Types)\
 local UI = require(root.UI)\
 local Skin = require(root.Skin)\
-local Window = require(root.Windows.Window)\
 \
 local Dialog = {}\
 \
 export type Button = Types.DialogButton\
 export type Options = Types.DialogOptions\
 \
---- Shows a modal dialog and returns its [[Window]] (already open). Headerless\
---- and centered, like Roblox's respawn/confirm modals. The buttons are real\
---- [[Icon]]s so they match the theme.\
+local OPEN = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)\
+local layer: ScreenGui? = nil\
+\
+local function getLayer(): ScreenGui\
+	if layer then\
+		return layer\
+	end\
+	local playerGui = Players.LocalPlayer:WaitForChild(\"PlayerGui\")\
+	layer = UI.new(\"ScreenGui\", {\
+		Name = \"MaterialDialogs\",\
+		ResetOnSpawn = false,\
+		IgnoreGuiInset = true,\
+		DisplayOrder = 60,\
+		Parent = playerGui,\
+	}) :: ScreenGui\
+	return layer :: ScreenGui\
+end\
+\
+--- Shows a modal dialog. Returns a handle with `:close()`.\
 function Dialog.show(options: Options): any\
 	local Icon = require(root) :: any  -- lazy: the Material module (avoids a load cycle)\
 	local width = options.width or 460\
-	local window = Window.new()   -- no owner: a free-standing modal\
-		:setSize(width, 240)\
-		:setModal(true, options.dismissable ~= false)\
-		:setHeaderVisible(false)\
+	local height = 240\
 \
-	local body = window:getBody()\
-	UI.new(\"UIPadding\", {\
-		PaddingTop = UDim.new(0, 30), PaddingBottom = UDim.new(0, 26),\
-		PaddingLeft = UDim.new(0, 30), PaddingRight = UDim.new(0, 30),\
-		Parent = body,\
+	local backdrop = UI.new(\"Frame\", {\
+		Name = \"DialogBackdrop\",\
+		Size = UDim2.fromScale(1, 1),\
+		BackgroundColor3 = Skin.Backdrop,\
+		BackgroundTransparency = 1,\
+		Parent = getLayer(),\
 	})\
 \
-	-- title / message, centered in the upper area\
+	local panel = UI.new(\"Frame\", {\
+		Name = \"DialogPanel\",\
+		AnchorPoint = Vector2.new(0.5, 0.5),\
+		Position = UDim2.fromScale(0.5, 0.5),\
+		Size = UDim2.fromOffset(width, height),\
+		BackgroundColor3 = Skin.Panel,\
+		BorderSizePixel = 0,\
+		Parent = backdrop,\
+	}, {\
+		UI.corner(Skin.CornerRadius),\
+		UI.stroke(Skin.Stroke, 1, Skin.StrokeTransparency),\
+		UI.new(\"UIPadding\", {\
+			PaddingTop = UDim.new(0, 30), PaddingBottom = UDim.new(0, 26),\
+			PaddingLeft = UDim.new(0, 30), PaddingRight = UDim.new(0, 30),\
+		}),\
+	})\
+\
+	UI.new(\"ImageLabel\", {\
+		Name = \"DialogShadow\",\
+		AnchorPoint = Vector2.new(0.5, 0.5),\
+		Position = UDim2.fromScale(0.5, 0.5),\
+		Size = UDim2.new(1, 40, 1, 40),\
+		BackgroundTransparency = 1,\
+		Image = Skin.ShadowImage,\
+		ImageColor3 = Color3.new(0, 0, 0),\
+		ImageTransparency = 0.45,\
+		ScaleType = Enum.ScaleType.Slice,\
+		SliceCenter = Rect.new(12, 12, 13, 13),\
+		ZIndex = 0,\
+		Parent = panel,\
+	})\
+\
 	UI.new(\"TextLabel\", {\
 		Name = \"Message\",\
 		AnchorPoint = Vector2.new(0.5, 0),\
@@ -4356,31 +4633,44 @@ function Dialog.show(options: Options): any\
 		TextWrapped = true,\
 		TextYAlignment = Enum.TextYAlignment.Center,\
 		TextXAlignment = Enum.TextXAlignment.Center,\
-		Parent = body,\
+		ZIndex = 2,\
+		Parent = panel,\
 	})\
 \
-	-- buttons, centered along the bottom, each a real Icon\
 	local buttonRow = UI.new(\"Frame\", {\
 		Name = \"Buttons\",\
 		AnchorPoint = Vector2.new(0.5, 1),\
 		Position = UDim2.fromScale(0.5, 1),\
 		Size = UDim2.new(1, 0, 0, 48),\
 		BackgroundTransparency = 1,\
-		Parent = body,\
+		ZIndex = 2,\
+		Parent = panel,\
 	}, {\
 		UI.list(Enum.FillDirection.Horizontal, 12),\
 	})\
 	;(buttonRow:FindFirstChildOfClass(\"UIListLayout\") :: UIListLayout).HorizontalAlignment = Enum.HorizontalAlignment.Center\
 \
+	local buttonIcons = {}\
+	local function close()\
+		for _, btn in buttonIcons do\
+			btn:destroy()\
+		end\
+		local tween = TweenService:Create(backdrop, OPEN, { BackgroundTransparency = 1 })\
+		tween:Play()\
+		tween.Completed:Once(function()\
+			backdrop:Destroy()\
+		end)\
+	end\
+\
 	local buttons = options.buttons or { { text = \"OK\", primary = true } }\
 	for index, spec in buttons do\
 		local fill = if spec.danger then Skin.Danger elseif spec.primary then Skin.Accent else Skin.Panel\
-		-- a holder the button Icon's widget sits in (gives us the selection ring)\
 		local holder = UI.new(\"Frame\", {\
 			Name = \"ButtonHolder\",\
 			Size = UDim2.fromOffset(150, 46),\
 			BackgroundTransparency = 1,\
 			LayoutOrder = index,\
+			ZIndex = 2,\
 			Parent = buttonRow,\
 		}, {\
 			UI.corner(UDim.new(0, 10)),\
@@ -4406,20 +4696,34 @@ function Dialog.show(options: Options): any\
 			{ \"IconCorners\", \"CornerRadius\", UDim.new(0, 10) },\
 		})\
 		btn:oneClick(true)\
-		btn:autoDeselect(false)  -- don't deselect the user's topbar icons\
+		btn:autoDeselect(false)  -- don't disturb the user's topbar icons\
 		btn.widget.Parent = holder\
 		btn.widget.Position = UDim2.fromScale(0, 0)\
+		table.insert(buttonIcons, btn)\
 		btn.selected:Connect(function()\
 			if spec.onClick then\
 				spec.onClick()\
 			end\
-			window:close()\
-			window:destroy()\
+			close()\
 		end)\
 	end\
 \
-	window:open()\
-	return window\
+	-- dismiss on backdrop click\
+	if options.dismissable ~= false then\
+		backdrop.InputBegan:Connect(function(input)\
+			if input.UserInputType == Enum.UserInputType.MouseButton1\
+				or input.UserInputType == Enum.UserInputType.Touch then\
+				close()\
+			end\
+		end)\
+	end\
+\
+	-- fade + scale in\
+	TweenService:Create(backdrop, OPEN, { BackgroundTransparency = 0.5 }):Play()\
+	panel.Size = UDim2.fromOffset(width * 0.96, height * 0.96)\
+	TweenService:Create(panel, OPEN, { Size = UDim2.fromOffset(width, height) }):Play()\
+\
+	return { close = close }\
 end\
 \
 --- Convenience: a two-button confirm/cancel dialog.\
@@ -5343,52 +5647,24 @@ export type Modification = { any }\
 \
 ---------------------- WINDOWS & OVERLAYS (Material additions) ----------------------\
 \
--- A Roblox-style panel owned by an icon: opens on select, closes on deselect.\
+-- The handle icon:setWindow returns — a titled panel that drops from the icon,\
+-- opening on select / closing on deselect (like a dropdown). Composed of icons.\
 export type Window = {\
-	-- fields\
-	title: string,\
-	isOpen: boolean,\
-	isModal: boolean,\
-	ownerIcon: any,\
-	root: Frame,\
-	body: Frame,\
-	-- events\
-	opened: Signal,\
-	closed: Signal,\
-	-- methods (chainable)\
+	frame: Frame,\
+	body: ScrollingFrame,\
+	icon: any,\
 	setTitle: (self: Window, text: string) -> Window,\
-	setIcon: (self: Window, imageId: (number | string)?) -> Window,\
 	setSize: (self: Window, width: number, height: number) -> Window,\
-	setDock: (self: Window, where: \"center\" | \"top\") -> Window,\
-	setHeaderVisible: (self: Window, enabled: boolean) -> Window,\
-	setModal: (self: Window, enabled: boolean, dismissable: boolean?) -> Window,\
-	adopt: (self: Window, guiObject: GuiObject) -> Window,\
-	release: (self: Window) -> Window,\
-	getBody: (self: Window) -> Frame,\
-	open: (self: Window) -> Window,\
-	close: (self: Window) -> Window,\
-	destroy: (self: Window) -> (),\
-}\
-\
-export type StaticWindow = {\
-	new: typeof(\
-		--[[\
-			Constructs a panel owned by an icon. Prefer icon:setWindow() which calls this.\
-		]]\
-		function(ownerIcon: any?): Window\
-			return (nil :: any) :: Window\
-		end\
-	),\
+	getBody: (self: Window) -> ScrollingFrame,\
+	addToWindow: (self: Window, guiObject: GuiObject) -> Window,\
+	addIcon: (self: Window, childIcon: any) -> Window,\
 }\
 \
 -- Config accepted by icon:setWindow(); every field optional.\
 export type WindowConfig = {\
 	title: string?,\
-	icon: (number | string)?,\
 	width: number?,\
 	height: number?,\
-	dock: (\"center\" | \"top\")?,\
-	modal: boolean?,\
 }\
 \
 export type ToastOptions = {\
@@ -5415,9 +5691,10 @@ export type DialogOptions = {\
 	dismissable: boolean?,\
 	width: number?,\
 }\
+export type DialogHandle = { close: () -> () }\
 export type Dialog = {\
-	show: (options: DialogOptions) -> Window,\
-	confirm: (message: string, onConfirm: () -> (), onCancel: (() -> ())?) -> Window,\
+	show: (options: DialogOptions) -> DialogHandle,\
+	confirm: (message: string, onConfirm: () -> (), onCancel: (() -> ())?) -> DialogHandle,\
 }\
 \
 export type Tooltip = {\
@@ -5836,9 +6113,9 @@ type Methods = {\
 	),\
 	setWindow: typeof(\
 		--[[\
-			Creates a Window, binds it to this icon (the shop-button pattern), and returns\
-			the Window so you can populate it. Pass a config table to set title/size/etc.\
-			Prefer this over Material.Window.new() when the window belongs to an icon.\
+			Gives this icon a window: a titled panel that drops from the icon and opens\
+			when the icon is selected, closes when deselected (like a dropdown). Returns\
+			the window handle; populate it with :addToWindow(gui) or :addIcon(icon).\
 		]]\
 		function(self: Icon, config: WindowConfig?): Window\
 			return (nil :: any) :: Window\
@@ -5846,10 +6123,26 @@ type Methods = {\
 	),\
 	getWindow: typeof(\
 		--[[\
-			Returns the Window created for this icon by setWindow, or nil.\
+			Returns the window handle created for this icon by setWindow, or nil.\
 		]]\
 		function(self: Icon): Window?\
 			return (nil :: any) :: Window?\
+		end\
+	),\
+	addToWindow: typeof(\
+		--[[\
+			Adds a GuiObject to this icon's window (creating the window if needed).\
+		]]\
+		function(self: Icon, guiObject: GuiObject): Icon\
+			return nil :: any\
+		end\
+	),\
+	addWindowIcon: typeof(\
+		--[[\
+			Adds an icon into this icon's window, like adding one to a dropdown/menu.\
+		]]\
+		function(self: Icon, childIcon: Icon): Icon\
+			return nil :: any\
 		end\
 	),\
 	destroy: typeof(\
@@ -5890,8 +6183,7 @@ export type StaticIcon = {\
 			return (nil :: any) :: Icon\
 		end\
 	),\
-	-- Material's panels + overlays\
-	Window: StaticWindow,\
+	-- Material's overlays (the Window is reached via icon:setWindow)\
 	Toast: Toast,\
 	Dialog: Dialog,\
 	Tooltip: Tooltip,\
@@ -6490,444 +6782,6 @@ end\
 \
 \
 return VERSION"},
-{"Material/Windows","Folder",nil},
-{"Material/Windows/Window","ModuleScript","--- A Roblox-style panel an icon opens — the in-experience store / quick-access\
---- look. Not a draggable OS window: it belongs to an [[Icon]], opens when that\
---- icon is selected and closes when it's deselected, and is built from the same\
---- TopbarPlus theme (panel colour, BuilderSans, shared shadow) so it matches the\
---- topbar. Its close button is a real [[Icon]].\
----\
---- Created through [[Icon:setWindow]] rather than directly:\
----\
---- ```lua a shop panel opened from the topbar\
---- local shop = Material.new()\
----     :setImage(14723463500)\
----     :setCaption(\"Shop\")\
----     :setWindow({ title = \"Shop\", width = 560, height = 400 })\
----\
---- shop:adopt(playerGui.ShopGui.Root)   -- reparent your existing UI in\
---- ```\
---- @section Windows\
---- @client\
-\
-local Players = game:GetService(\"Players\")\
-local TweenService = game:GetService(\"TweenService\")\
-local Workspace = game:GetService(\"Workspace\")\
-\
-local root = script.Parent.Parent\
-local Types = require(root.Types)\
-local Janitor = require(root.Packages.Janitor)\
-local UI = require(root.UI)\
-local Skin = require(root.Skin)\
-\
-export type Window = Types.Window\
-\
-local OPEN_TWEEN = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)\
-\
-local Window = {}\
-Window.__index = Window\
-\
-local layer: ScreenGui? = nil\
-local backdrop: Frame? = nil\
-\
-local function getLayer(): (ScreenGui, Frame)\
-	if layer then\
-		return layer, backdrop :: Frame\
-	end\
-	local playerGui = Players.LocalPlayer:WaitForChild(\"PlayerGui\")\
-	local screenGui = UI.new(\"ScreenGui\", {\
-		Name = \"MaterialWindows\",\
-		ResetOnSpawn = false,\
-		IgnoreGuiInset = true,\
-		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,\
-		DisplayOrder = 50,\
-		Parent = playerGui,\
-	}) :: ScreenGui\
-	backdrop = UI.new(\"Frame\", {\
-		Name = \"Backdrop\",\
-		Size = UDim2.fromScale(1, 1),\
-		BackgroundColor3 = Skin.Backdrop,\
-		BackgroundTransparency = 1,\
-		Visible = false,\
-		ZIndex = 0,\
-		Parent = screenGui,\
-	}) :: Frame\
-	layer = screenGui\
-	return screenGui, backdrop :: Frame\
-end\
-\
-local function viewport(): Vector2\
-	local camera = Workspace.CurrentCamera\
-	return if camera then camera.ViewportSize else Vector2.new(1280, 720)\
-end\
-\
---- Creates a panel. With an `ownerIcon` it opens/closes with that icon (the\
---- [[Icon:setWindow]] path); without one it's a free-standing modal you open and\
---- close yourself (used by [[Dialog]]).\
-function Window.new(ownerIcon: any?)\
-	local self = setmetatable({}, Window)\
-	self.janitor = Janitor.new()\
-	self.ownerIcon = ownerIcon\
-	self.title = \"\"\
-	self.isOpen = false\
-	self.isModal = false\
-	self.dismissable = true\
-	self.headerVisible = true\
-	self._size = Vector2.new(480, 320)\
-	self._dock = \"center\"\
-	self._adopted = {}\
-\
-	self.opened = self.janitor:add(require(root.Packages.GoodSignal).new())\
-	self.closed = self.janitor:add(require(root.Packages.GoodSignal).new())\
-\
-	self:_build()\
-\
-	-- when owned by an icon, open/close follow its selection\
-	if ownerIcon then\
-		self.janitor:add(ownerIcon.selected:Connect(function()\
-			self:open()\
-		end))\
-		self.janitor:add(ownerIcon.deselected:Connect(function()\
-			self:close()\
-		end))\
-	end\
-	self.janitor:add(function()\
-		self:release()\
-		if self.root then\
-			self.root:Destroy()\
-		end\
-	end)\
-	return self\
-end\
-\
-function Window:_build()\
-	local screenGui = getLayer()\
-\
-	-- transparent geometry frame holding the shadow + the clipped panel\
-	local rootFrame = UI.new(\"Frame\", {\
-		Name = \"Window\",\
-		Size = UDim2.fromOffset(self._size.X, self._size.Y),\
-		BackgroundTransparency = 1,\
-		Visible = false,\
-		Parent = screenGui,\
-	})\
-	self.root = rootFrame\
-\
-	UI.new(\"ImageLabel\", {\
-		Name = \"Shadow\",\
-		AnchorPoint = Vector2.new(0.5, 0.5),\
-		Position = UDim2.fromScale(0.5, 0.5),\
-		Size = UDim2.new(1, 40, 1, 40),\
-		BackgroundTransparency = 1,\
-		Image = Skin.ShadowImage,\
-		ImageColor3 = Color3.new(0, 0, 0),\
-		ImageTransparency = 0.45,\
-		ScaleType = Enum.ScaleType.Slice,\
-		SliceCenter = Rect.new(12, 12, 13, 13),\
-		ZIndex = 0,\
-		Parent = rootFrame,\
-	})\
-\
-	local panel = UI.new(\"Frame\", {\
-		Name = \"Panel\",\
-		Size = UDim2.fromScale(1, 1),\
-		BackgroundColor3 = Skin.Panel,\
-		BorderSizePixel = 0,\
-		ClipsDescendants = true,\
-		ZIndex = 1,\
-		Parent = rootFrame,\
-	}, {\
-		UI.corner(Skin.CornerRadius),\
-		UI.stroke(Skin.Stroke, 1, Skin.StrokeTransparency),\
-	})\
-	self.panel = panel\
-\
-	-- header\
-	local header = UI.new(\"Frame\", {\
-		Name = \"Header\",\
-		Size = UDim2.new(1, 0, 0, Skin.HeaderHeight),\
-		BackgroundTransparency = 1,\
-		ZIndex = 2,\
-		Parent = panel,\
-	})\
-	self.header = header\
-\
-	self.titleLabel = UI.new(\"TextLabel\", {\
-		Name = \"Title\",\
-		AnchorPoint = Vector2.new(0, 0.5),\
-		Position = UDim2.new(0, 52, 0.5, 0),\
-		Size = UDim2.new(1, -110, 1, 0),\
-		BackgroundTransparency = 1,\
-		FontFace = Skin.TitleFontFace,\
-		Text = self.title,\
-		TextColor3 = Skin.Text,\
-		TextSize = 18,\
-		TextXAlignment = Enum.TextXAlignment.Left,\
-		TextTruncate = Enum.TextTruncate.AtEnd,\
-		ZIndex = 3,\
-		Parent = header,\
-	})\
-\
-	self.titleIcon = UI.new(\"ImageLabel\", {\
-		Name = \"TitleIcon\",\
-		AnchorPoint = Vector2.new(0, 0.5),\
-		Position = UDim2.new(0, 52, 0.5, 0),\
-		Size = UDim2.fromOffset(22, 22),\
-		BackgroundTransparency = 1,\
-		Visible = false,\
-		ZIndex = 3,\
-		Parent = header,\
-	})\
-\
-	-- a holder the close Icon's widget is parented into (left, Roblox style)\
-	self.closeHolder = UI.new(\"Frame\", {\
-		Name = \"CloseHolder\",\
-		AnchorPoint = Vector2.new(0, 0.5),\
-		Position = UDim2.new(0, 6, 0.5, 0),\
-		Size = UDim2.fromOffset(38, 38),\
-		BackgroundTransparency = 1,\
-		ZIndex = 3,\
-		Parent = header,\
-	})\
-	self:_buildCloseIcon()\
-\
-	-- divider under the header\
-	self.divider = UI.new(\"Frame\", {\
-		Name = \"Divider\",\
-		Position = UDim2.new(0, 0, 0, Skin.HeaderHeight),\
-		Size = UDim2.new(1, 0, 0, 1),\
-		BackgroundColor3 = Skin.Divider,\
-		BackgroundTransparency = 0.85,\
-		BorderSizePixel = 0,\
-		ZIndex = 2,\
-		Parent = panel,\
-	})\
-\
-	-- body (transparent; adopted content renders here)\
-	self.body = UI.new(\"Frame\", {\
-		Name = \"Body\",\
-		AnchorPoint = Vector2.new(0, 1),\
-		Position = UDim2.fromScale(0, 1),\
-		Size = UDim2.new(1, 0, 1, -Skin.HeaderHeight),\
-		BackgroundTransparency = 1,\
-		BorderSizePixel = 0,\
-		ClipsDescendants = true,\
-		ZIndex = 1,\
-		Parent = panel,\
-	})\
-\
-	self:_place()\
-end\
-\
--- the close button is a real Icon (matches the theme, ratios, hover)\
-function Window:_buildCloseIcon()\
-	local Icon = require(root) :: any  -- lazy: the Material module (init.lua)\
-	local closeIcon = Icon.new()\
-	closeIcon:setLabel(\"\\u{2715}\")\
-	closeIcon:modifyTheme({\
-		{ \"IconLabel\", \"Text\", \"\\u{2715}\", \"Deselected\" },\
-		{ \"IconLabel\", \"Text\", \"\\u{2715}\", \"Selected\" },\
-		{ \"IconLabel\", \"FontFace\", Skin.TitleFontFace },\
-		{ \"IconLabel\", \"TextSize\", 18 },\
-		{ \"IconImage\", \"Image\", \"\" },\
-		{ \"Widget\", \"MinimumWidth\", 38 },\
-		{ \"Widget\", \"MinimumHeight\", 38 },\
-		{ \"IconButton\", \"BackgroundTransparency\", 1, \"Deselected\" },\
-	})\
-	closeIcon:oneClick(true)\
-	closeIcon:autoDeselect(false)  -- don't deselect the user's other topbar icons\
-	closeIcon.widget.Parent = self.closeHolder\
-	closeIcon.widget.Position = UDim2.fromScale(0, 0)\
-	self.closeIcon = closeIcon\
-	self.janitor:add(function()\
-		closeIcon:destroy()\
-	end)\
-	self.janitor:add(closeIcon.selected:Connect(function()\
-		if self.ownerIcon then\
-			self.ownerIcon:deselect(\"WindowClose\", self.ownerIcon)\
-		else\
-			self:close()\
-		end\
-	end))\
-end\
-\
--- position the panel per its dock + size\
-function Window:_place()\
-	local vp = viewport()\
-	if self._dock == \"top\" then\
-		self.root.AnchorPoint = Vector2.new(0.5, 0)\
-		self.root.Position = UDim2.new(0.5, 0, 0, 8)\
-		self.root.Size = UDim2.new(1, -16, 0, self._size.Y)\
-	else -- center\
-		self.root.AnchorPoint = Vector2.new(0.5, 0.5)\
-		self.root.Position = UDim2.fromScale(0.5, 0.5)\
-		self.root.Size = UDim2.fromOffset(math.min(self._size.X, vp.X - 24), math.min(self._size.Y, vp.Y - 24))\
-	end\
-end\
-\
---- Sets the panel title.\
-function Window:setTitle(text: string)\
-	self.title = text\
-	self.titleLabel.Text = text\
-	return self\
-end\
-\
---- Sets a small icon shown left of the title (asset id or asset string).\
-function Window:setIcon(imageId: (number | string)?)\
-	if imageId == nil then\
-		self.titleIcon.Visible = false\
-		self.titleLabel.Position = UDim2.new(0, 52, 0.5, 0)\
-	else\
-		self.titleIcon.Image = if tonumber(imageId) then `rbxassetid://{imageId}` else imageId\
-		self.titleIcon.Visible = true\
-		self.titleLabel.Position = UDim2.new(0, 82, 0.5, 0)\
-	end\
-	return self\
-end\
-\
---- Sets the panel's pixel size (used by the `center` dock).\
-function Window:setSize(width: number, height: number)\
-	self._size = Vector2.new(width, height)\
-	self:_place()\
-	return self\
-end\
-\
---- Docks the panel `\"center\"` (default) or `\"top\"` (full-width, like the Shop).\
-function Window:setDock(where: \"center\" | \"top\")\
-	self._dock = where\
-	self:_place()\
-	return self\
-end\
-\
---- Shows or hides the title bar (hidden = the headerless respawn-modal look).\
-function Window:setHeaderVisible(bool: boolean)\
-	self.headerVisible = bool\
-	self.header.Visible = bool\
-	self.divider.Visible = bool\
-	self.body.Size = UDim2.new(1, 0, 1, if bool then -Skin.HeaderHeight else 0)\
-	return self\
-end\
-\
---- Makes the panel modal: a dimmed backdrop covers everything behind it while\
---- open; with `dismissable` (default true) clicking the backdrop closes it.\
-function Window:setModal(bool: boolean, dismissable: boolean?)\
-	self.isModal = bool\
-	if dismissable ~= nil then\
-		self.dismissable = dismissable\
-	end\
-	return self\
-end\
-\
---- Reparents an existing GuiObject into the body, remembering where it came\
---- from; restored on [[Window:release]] / close / destroy.\
-function Window:adopt(guiObject: GuiObject)\
-	if self._adopted[guiObject] then\
-		return self\
-	end\
-	self._adopted[guiObject] = {\
-		parent = guiObject.Parent,\
-		size = guiObject.Size,\
-		position = guiObject.Position,\
-		anchor = guiObject.AnchorPoint,\
-	}\
-	guiObject.Size = UDim2.fromScale(1, 1)\
-	guiObject.Position = UDim2.fromScale(0, 0)\
-	guiObject.AnchorPoint = Vector2.zero\
-	guiObject.Parent = self.body\
-	return self\
-end\
-\
---- Restores every adopted GuiObject to where it came from.\
-function Window:release()\
-	for guiObject, saved in self._adopted do\
-		if guiObject and guiObject.Parent == self.body then\
-			guiObject.Size = saved.size\
-			guiObject.Position = saved.position\
-			guiObject.AnchorPoint = saved.anchor\
-			guiObject.Parent = saved.parent\
-		end\
-	end\
-	table.clear(self._adopted)\
-	return self\
-end\
-\
---- Returns the body frame — parent your own content here when not adopting.\
-function Window:getBody(): Frame\
-	return self.body\
-end\
-\
-function Window:_setBackdrop(visible: boolean)\
-	local _, back = getLayer()\
-	if visible then\
-		back.ZIndex = 0\
-		back.Visible = true\
-		TweenService:Create(back, OPEN_TWEEN, { BackgroundTransparency = 0.5 }):Play()\
-		self._backdropConn = self.janitor:add(back.InputBegan:Connect(function(input)\
-			if self.dismissable and (input.UserInputType == Enum.UserInputType.MouseButton1\
-				or input.UserInputType == Enum.UserInputType.Touch) then\
-				if self.ownerIcon then\
-					self.ownerIcon:deselect(\"WindowBackdrop\", self.ownerIcon)\
-				else\
-					self:close()\
-				end\
-			end\
-		end))\
-	else\
-		local tween = TweenService:Create(back, OPEN_TWEEN, { BackgroundTransparency = 1 })\
-		tween:Play()\
-		tween.Completed:Once(function()\
-			if back.BackgroundTransparency >= 1 then\
-				back.Visible = false\
-			end\
-		end)\
-	end\
-end\
-\
---- Opens the panel (usually driven by the icon being selected).\
-function Window:open()\
-	if self.isOpen then\
-		return self\
-	end\
-	self.isOpen = true\
-	self.root.Visible = true\
-	if self.isModal then\
-		self:_setBackdrop(true)\
-	end\
-	-- scale-fade in\
-	local w, h = self.root.Size.X, self.root.Size.Y\
-	self.root.Size = UDim2.new(w.Scale * 0.96, w.Offset * 0.96, h.Scale * 0.96, h.Offset * 0.96)\
-	local target = if self._dock == \"top\"\
-		then UDim2.new(1, -16, 0, self._size.Y)\
-		else UDim2.fromOffset(math.min(self._size.X, viewport().X - 24), math.min(self._size.Y, viewport().Y - 24))\
-	TweenService:Create(self.root, OPEN_TWEEN, { Size = target }):Play()\
-	self.opened:Fire()\
-	return self\
-end\
-\
---- Closes the panel (usually driven by the icon being deselected).\
-function Window:close()\
-	if not self.isOpen then\
-		return self\
-	end\
-	self.isOpen = false\
-	self:_setBackdrop(false)\
-	self.root.Visible = false\
-	self.closed:Fire()\
-	return self\
-end\
-\
---- Destroys the panel and its close icon; adopted content is released first.\
-function Window:destroy()\
-	if self.isDestroyed then\
-		return\
-	end\
-	self.isDestroyed = true\
-	self.janitor:clean()\
-end\
-Window.Destroy = Window.destroy\
-\
-return (Window :: any) :: Types.StaticWindow\
-"},
 }
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local old = ReplicatedStorage:FindFirstChild("Material")
