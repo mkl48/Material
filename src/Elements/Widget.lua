@@ -1,3 +1,9 @@
+--- The icon's physical GuiObject tree: the button, image, label, spot, and
+--- click region, plus the automatic resizing logic that grows and shrinks the
+--- widget as labels change and images show or hide. Built once per icon by
+--- [[Icon.new]]. ("Widget" distinguishes the *instance* from the Icon *object*.)
+--- @section Elements
+
 -- I named this 'Widget' instead of 'Icon' to make a clear difference between the icon *object* and
 -- the icon (aka Widget) instance.
 -- This contains the core components of the icon such as the button, image, label and notice. It's

@@ -1,3 +1,9 @@
+--- The theme engine: applies, merges, and removes theme modifications
+--- ({instanceName, property, value, state?} entries), tracks each icon's
+--- state groups, and redirects writes from clipped clones back to their real
+--- instances. Drives [[Icon:setTheme]], [[Icon:modifyTheme]], and friends.
+--- @section Features
+
 -- The functions here are dedicated solely to managing theme state
 -- and updating the appearance of instances to match that state.
 -- You don't need to use any of these functions, the useful ones

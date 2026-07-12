@@ -1,3 +1,7 @@
+--- The horizontal scrolling row an icon expands into when child icons join
+--- it via [[Icon:setMenu]] or [[Icon:joinMenu]].
+--- @section Elements
+
 return function(icon)
 
 	local menu = Instance.new("ScrollingFrame")

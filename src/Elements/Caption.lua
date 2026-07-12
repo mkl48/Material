@@ -1,3 +1,8 @@
+--- The caption tooltip shown while hovering (or long-pressing) an icon, set
+--- with [[Icon:setCaption]]. Also renders the hotkey chip when a toggle key
+--- or caption hint is bound.
+--- @section Elements
+
 local CAPTION_COLOR = Color3.fromRGB(39, 41, 48)
 local TEXT_SIZE = 15
 return function(icon)

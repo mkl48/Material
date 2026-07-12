@@ -1,4 +1,31 @@
 --!nonstrict
+--- The Icon class — Material's entire public surface, drop-in identical to
+--- TopbarPlus. Construct with [[Icon.new]], then chain: every method returns
+--- the icon. Most `set*` methods accept an optional trailing `iconState`
+--- ("Deselected" | "Selected" | "Viewing") that scopes the change to one
+--- state; omit it to apply to all three.
+---
+--- Icons expose their events as signal fields — `selected`, `deselected`,
+--- `toggled`, `viewingStarted`, `viewingEnded`, `stateChanged`, `notified`
+--- and more — plus class-level signals like `Icon.iconAdded`.
+---
+--- ```lua a complete icon
+--- local Icon = require(game.ReplicatedStorage.Material)
+---
+--- Icon.new()
+---     :setImage(14723463500)
+---     :setLabel("Shop")
+---     :setCaption("Open the shop")
+---     :bindToggleKey(Enum.KeyCode.E)
+---     :align("Left")
+---     :bindEvent("selected", function(icon)
+---         shopGui.Visible = true
+---     end)
+--- ```
+--- @class Icon
+--- @section Overview
+--- @client
+
 --[[
 	
 	The majority of this code is an interface designed to make it easy for you to
@@ -76,7 +103,7 @@ Icon.__index = Icon
 
 
 
---- LOCAL
+-- LOCAL
 local localPlayer = Players.LocalPlayer
 local themes = iconModule.Features.Themes
 local iconsDict = {}
@@ -107,10 +134,12 @@ Icon.iconChanged = Signal.new()
 
 
 -- PUBLIC FUNCTIONS
+--- Returns the dictionary of every existing icon, keyed by UID.
 function Icon.getIcons()
 	return Icon.iconsDictionary
 end
 
+--- Returns the icon with the given UID, or nil.
 function Icon.getIconByUID(UID)
 	local match = Icon.iconsDictionary[UID]
 	if match then
@@ -119,6 +148,8 @@ function Icon.getIconByUID(UID)
 	return nil
 end
 
+--- Finds an icon by the name given via [[Icon:setName]] (or by UID), or nil.
+--- @param nameOrUID an icon name, or a UID from `icon.UID`
 function Icon.getIcon(nameOrUID)
 	local match = Icon.getIconByUID(nameOrUID)
 	if match then
@@ -132,6 +163,11 @@ function Icon.getIcon(nameOrUID)
 	return nil
 end
 
+--- Shows or hides every Material ScreenGui at once (only your icons — the
+--- native Roblox topbar is untouched). Call with no argument to re-apply the
+--- last stored setting.
+--- @param bool false hides all icons; true shows them
+--- @param isInternal internal flag — omit this when calling yourself
 function Icon.setTopbarEnabled(bool, isInternal)
 	if typeof(bool) ~= "boolean" then
 		bool = Icon.topbarEnabled
@@ -144,6 +180,9 @@ function Icon.setTopbarEnabled(bool, isInternal)
 	end
 end
 
+--- Merges theme modifications into the base theme and re-themes every
+--- current (and future) icon — the way to restyle the whole topbar at once.
+--- @param modifications one modification or an array of them — see [[Icon:modifyTheme]] for the format
 function Icon.modifyBaseTheme(modifications)
 	modifications = Themes.getModifications(modifications)
 	for _, modification in pairs(modifications) do
@@ -156,6 +195,8 @@ function Icon.modifyBaseTheme(modifications)
 	end
 end
 
+--- Sets the DisplayOrder of Material's ScreenGuis (default 10) — raise or
+--- lower it to layer the icons against your other interfaces.
 function Icon.setDisplayOrder(int)
 	Icon.baseDisplayOrder = int
 	Icon.baseDisplayOrderChanged:Fire(int)
@@ -177,11 +218,15 @@ end)
 
 
 -- CONSTRUCTOR
+--- Creates, registers, and returns a new icon: deselected, base-themed,
+--- aligned left, with click, touch, hover, and toggle-key input already
+--- wired. Icons created from a ScreenGui with `ResetOnSpawn` enabled are
+--- destroyed automatically when the player respawns.
 function Icon.new()
 	local self = {}
 	setmetatable(self, Icon)
 
-	--- Janitors (for cleanup)
+	-- Janitors (for cleanup)
 	local janitor = Janitor.new()
 	self.janitor = janitor
 	self.themesJanitor = janitor:add(Janitor.new())
@@ -478,6 +523,7 @@ end
 
 
 -- METHODS
+--- Names the icon (and its widget instance) so [[Icon.getIcon]] can find it.
 function Icon:setName(name)
 	self.widget.Name = name
 	self.name = name
@@ -517,6 +563,10 @@ function Icon:setState(incomingStateName, fromSource, sourceIcon)
 	self.stateChanged:Fire(stateName, fromSource, sourceIcon)
 end
 
+--- Returns the instance with that name inside the icon's widget (every
+--- significant instance is uniquely named, and results are cached). The
+--- escape hatch for customization beyond what themes cover.
+--- @param name e.g. "IconLabel", "IconImage", "ClickRegion", "Widget"
 function Icon:getInstance(name)
 	-- This enables us to easily retrieve instances located within the icon simply by passing its name.
 	-- Every important/significant instance is named uniquely therefore this is no worry of overlap.
@@ -640,6 +690,13 @@ function Icon:updateParent()
 	end
 end
 
+--- Registers a callback that runs just before the theme system writes a
+--- property, letting you intercept and transform the value — return the
+--- value you want actually applied.
+--- @param collectiveOrInstanceName the instance (or collective group) to intercept
+--- @param property the property being written
+--- @param callback receives the incoming value, returns the final one
+--- @param refreshAppearance true to re-apply the property immediately
 function Icon:setBehaviour(collectiveOrInstanceName, property, callback, refreshAppearance)
 	-- You can specify your own custom callback to handle custom logic just before
 	-- an instances property is changed by using :setBehaviour()
@@ -653,11 +710,20 @@ function Icon:setBehaviour(collectiveOrInstanceName, property, callback, refresh
 	end
 end
 
+--- Applies theme modifications to this icon. A modification is
+--- `{instanceName, property, value, iconState?}` — pass one or an array of
+--- them. Also returns a modification UID for [[Icon:removeModification]].
+---
+--- ```lua recolor one icon's background while selected
+--- icon:modifyTheme({"IconButton", "BackgroundColor3", Color3.fromRGB(255, 89, 89), "Selected"})
+--- ```
 function Icon:modifyTheme(modifications, customModificationUID)
 	local modificationUID = Themes.modify(self, modifications, customModificationUID)
 	return self, modificationUID
 end
 
+--- Like [[Icon:modifyTheme]], but applied to the icon's child icons (those
+--- in its menu or dropdown), both current and future ones.
 function Icon:modifyChildTheme(modifications, modificationUID)
 	-- Same as modifyTheme except for its children (i.e. icons
 	-- within its dropdown or menu)
@@ -671,21 +737,28 @@ function Icon:modifyChildTheme(modifications, modificationUID)
 	return self
 end
 
+--- Removes a modification previously applied with [[Icon:modifyTheme]],
+--- using the UID it returned.
 function Icon:removeModification(modificationUID)
 	Themes.remove(self, modificationUID)
 	return self
 end
 
+--- Removes every modification matching the given instance name, property,
+--- and (optionally) state — when you don't have a UID to hand.
 function Icon:removeModificationWith(instanceName, property, state)
 	Themes.removeWith(self, instanceName, property, state)
 	return self
 end
 
+--- Replaces the icon's entire theme (see `Features/Themes/Default.lua` for
+--- the shape of a full theme table).
 function Icon:setTheme(theme)
 	Themes.set(self, theme)
 	return self
 end
 
+--- Shows or hides the icon (widget visibility plus parent layout update).
 function Icon:setEnabled(bool)
 	self.isEnabled = bool
 	self.enabled = self.isEnabled
@@ -694,16 +767,29 @@ function Icon:setEnabled(bool)
 	return self
 end
 
+--- Selects the icon programmatically — fires `selected` and `toggled`, shows
+--- bound toggle items, and (by default) deselects other icons.
+--- @param fromSource optional label describing what caused the selection
+--- @param sourceIcon optional icon that caused it
 function Icon:select(fromSource, sourceIcon)
 	self:setState("Selected", fromSource, sourceIcon)
 	return self
 end
 
+--- Deselects the icon programmatically — fires `deselected` and `toggled`
+--- and hides bound toggle items.
+--- @param fromSource optional label describing what caused the deselection
+--- @param sourceIcon optional icon that caused it
 function Icon:deselect(fromSource, sourceIcon)
 	self:setState("Deselected", fromSource, sourceIcon)
 	return self
 end
 
+--- Adds a notice — the counter badge in the icon's corner. Each call
+--- increments the count; the notice clears when the given signal fires
+--- (the icon's `deselected` by default).
+--- @param customClearSignal a signal or RBXScriptSignal that clears this notice
+--- @param noticeId optional id so the same notice isn't counted twice
 function Icon:notify(customClearSignal, noticeId)
 	-- Generates a notification which appears in the top right of the icon. Useful for example for prompting
 	-- users of changes/updates within your UI such as a Catalog
@@ -718,17 +804,23 @@ function Icon:notify(customClearSignal, noticeId)
 	return self
 end
 
+--- Clears every active notice on the icon.
 function Icon:clearNotices()
 	self.endNotices:Fire()
 	return self
 end
 
+--- Disables the highlight overlay shown while hovering the icon
+--- (alias: `disableStateOverlay`).
 function Icon:disableOverlay(bool)
 	self.overlayDisabled = bool
 	return self
 end
 Icon.disableStateOverlay = Icon.disableOverlay
 
+--- Sets the icon's image and preloads the asset so it doesn't pop in late.
+--- @param imageId an asset id number, or a full asset string
+--- @param iconState optionally scope to "Deselected" | "Selected" | "Viewing"
 function Icon:setImage(imageId, iconState)
 	self:modifyTheme({"IconImage", "Image", imageId, iconState})
 	
@@ -745,11 +837,14 @@ function Icon:setImage(imageId, iconState)
 	return self
 end
 
+--- Sets the icon's text label; the widget resizes automatically to fit.
 function Icon:setLabel(text, iconState)
 	self:modifyTheme({"IconLabel", "Text", text, iconState})
 	return self
 end
 
+--- Sets the icon's position among its neighbours (lower appears first).
+--- Decimals work — internally scaled so `1.5` slots between `1` and `2`.
 function Icon:setOrder(int, iconState)
 	-- We multiply by 100 to allow for custom increments inbetween
 	-- (.01, .02, etc) as LayoutOrders only support integers
@@ -759,11 +854,16 @@ function Icon:setOrder(int, iconState)
 	return self
 end
 
+--- Sets the corner radius of the icon's corner instances (fully round by
+--- default).
 function Icon:setCornerRadius(udim, iconState)
 	self:modifyTheme({"IconCorners", "CornerRadius", udim, iconState})
 	return self
 end
 
+--- Moves the icon to the left, center, or right group of the topbar
+--- (alias: `setAlignment`). Accepts "left" | "center" | "right" (and "mid" /
+--- "centre"); anything else falls back to left.
 function Icon:align(leftCenterOrRight, isFromParentIcon)
 	-- Determines the side of the screen the icon will be ordered
 	local direction = tostring(leftCenterOrRight):lower()
@@ -793,21 +893,26 @@ function Icon:align(leftCenterOrRight, isFromParentIcon)
 end
 Icon.setAlignment = Icon.align
 
+--- Shorthand for `align("Left")`.
 function Icon:setLeft()
 	self:setAlignment("Left")
 	return self
 end
 
+--- Shorthand for `align("Center")`.
 function Icon:setMid()
 	self:setAlignment("Center")
 	return self
 end
 
+--- Shorthand for `align("Right")`.
 function Icon:setRight()
 	self:setAlignment("Right")
 	return self
 end
 
+--- Sets a minimum pixel width for the widget — useful when a label changes
+--- frequently and you don't want the icon resizing every time.
 function Icon:setWidth(offsetMinimum, iconState)
 	-- This sets a minimum X offset size for the widget, useful
 	-- for example if you're constantly changing the label
@@ -816,21 +921,30 @@ function Icon:setWidth(offsetMinimum, iconState)
 	return self
 end
 
+--- Scales the image within its cell (default 0.5 deselected, 0.7 selected).
 function Icon:setImageScale(number, iconState)
 	self:modifyTheme({"IconImageScale", "Value", number, iconState})
 	return self
 end
 
+--- Sets the image's aspect ratio (1 = square).
 function Icon:setImageRatio(number, iconState)
 	self:modifyTheme({"IconImageRatio", "AspectRatio", number, iconState})
 	return self
 end
 
+--- Sets the label's text size.
 function Icon:setTextSize(number, iconState)
 	self:modifyTheme({"IconLabel", "TextSize", number, iconState})
 	return self
 end
 
+--- Sets the label's font. Accepts a font family name, a font asset id, an
+--- `Enum.Font`, or an asset path — weight and style are optional.
+--- @param font name, id, Enum.Font, or asset path
+--- @param fontWeight an Enum.FontWeight (default Regular)
+--- @param fontStyle an Enum.FontStyle (default Normal)
+--- @param iconState optionally scope to one state
 function Icon:setTextFont(font, fontWeight, fontStyle, iconState)
 	fontWeight = fontWeight or Enum.FontWeight.Regular
 	fontStyle = fontStyle or Enum.FontStyle.Normal
@@ -852,6 +966,8 @@ function Icon:setTextFont(font, fontWeight, fontStyle, iconState)
 	return self
 end
 
+--- Sets the label's text color (falls back to white, with a warning, if
+--- given a non-Color3).
 function Icon:setTextColor(Color, iconState)
 	if Color == nil or Color == "" or (type(Color) ~= "userdata" or typeof(Color) ~= "Color3") then
 		if Color ~= nil and Color ~= "" then
@@ -864,6 +980,9 @@ function Icon:setTextColor(Color, iconState)
 	return self
 end
 
+--- Binds a GuiObject or LayerCollector to the icon's selected state: it is
+--- shown on select and hidden on deselect — the one-liner for "this button
+--- opens this menu".
 function Icon:bindToggleItem(guiObjectOrLayerCollector)
 	if not guiObjectOrLayerCollector:IsA("GuiObject") and not guiObjectOrLayerCollector:IsA("LayerCollector") then
 		error("Toggle item must be a GuiObject or LayerCollector!")
@@ -873,6 +992,7 @@ function Icon:bindToggleItem(guiObjectOrLayerCollector)
 	return self
 end
 
+--- Unbinds an item previously bound with [[Icon:bindToggleItem]].
 function Icon:unbindToggleItem(guiObjectOrLayerCollector)
 	self.toggleItems[guiObjectOrLayerCollector] = nil
 	self:_updateSelectionInstances()
@@ -905,6 +1025,10 @@ function Icon:_setToggleItemsVisible(bool, fromSource, sourceIcon)
 	end
 end
 
+--- Connects a handler to one of the icon's signals by name (`"selected"`,
+--- `"deselected"`, `"toggled"`, …). The handler receives the icon first,
+--- then the signal's own arguments. One binding per event name — rebinding
+--- replaces via [[Icon:unbindEvent]].
 function Icon:bindEvent(iconEventName, eventFunction)
 	local event = self[iconEventName]
 	assert(event and typeof(event) == "table" and event.Connect, "argument[1] must be a valid topbarplus icon event name!")
@@ -915,6 +1039,7 @@ function Icon:bindEvent(iconEventName, eventFunction)
 	return self
 end
 
+--- Disconnects a handler bound with [[Icon:bindEvent]].
 function Icon:unbindEvent(iconEventName)
 	local eventConnection = self.bindedEvents[iconEventName]
 	if eventConnection then
@@ -924,6 +1049,9 @@ function Icon:unbindEvent(iconEventName)
 	return self
 end
 
+--- Binds a keyboard key that toggles the icon, and surfaces it as a hotkey
+--- chip in the caption.
+--- @param keyCodeEnum e.g. Enum.KeyCode.E
 function Icon:bindToggleKey(keyCodeEnum)
 	assert(typeof(keyCodeEnum) == "EnumItem", "argument[1] must be a KeyCode EnumItem!")
 	self.bindedToggleKeys[keyCodeEnum] = true
@@ -932,12 +1060,15 @@ function Icon:bindToggleKey(keyCodeEnum)
 	return self
 end
 
+--- Unbinds a key bound with [[Icon:bindToggleKey]].
 function Icon:unbindToggleKey(keyCodeEnum)
 	assert(typeof(keyCodeEnum) == "EnumItem", "argument[1] must be a KeyCode EnumItem!")
 	self.bindedToggleKeys[keyCodeEnum] = nil
 	return self
 end
 
+--- Spawns `callback(icon, ...)` — lets you run arbitrary logic without
+--- breaking a method chain.
 function Icon:call(callback, ...)
 	local packedArgs = table.pack(...)
 	task.spawn(function()
@@ -946,11 +1077,15 @@ function Icon:call(callback, ...)
 	return self
 end
 
+--- Registers anything (connection, instance, function) with the icon's
+--- janitor so it is cleaned up when the icon is destroyed.
 function Icon:addToJanitor(callback, methodName, index)
 	self.janitor:add(callback, methodName, index)
 	return self
 end
 
+--- Blocks all user input on the icon (clicks, touches, toggle keys). Undo
+--- with [[Icon:unlock]].
 function Icon:lock()
 	-- This disables all user inputs related to the icon (such as clicking buttons, pressing keys, etc)
 	local clickRegion = self:getInstance("ClickRegion")
@@ -959,6 +1094,7 @@ function Icon:lock()
 	return self
 end
 
+--- Re-enables user input after [[Icon:lock]].
 function Icon:unlock()
 	local clickRegion = self:getInstance("ClickRegion")
 	clickRegion.Visible = true
@@ -966,6 +1102,8 @@ function Icon:unlock()
 	return self
 end
 
+--- Locks the icon for the given duration, then unlocks. **Yields** for the
+--- full duration.
 function Icon:debounce(seconds)
 	self:lock()
 	task.wait(seconds)
@@ -973,6 +1111,8 @@ function Icon:debounce(seconds)
 	return self
 end
 
+--- Controls whether this icon deselects itself when another icon is
+--- selected (default true). Pass false for independent icons.
 function Icon:autoDeselect(bool)
 	-- When set to true the icon will deselect itself automatically whenever
 	-- another icon is selected
@@ -983,6 +1123,8 @@ function Icon:autoDeselect(bool)
 	return self
 end
 
+--- Turns the icon into a momentary button: it deselects itself immediately
+--- after every selection, so it fires `selected` but never stays lit.
 function Icon:oneClick(bool)
 	-- When set to true the icon will automatically deselect when selected, this creates
 	-- the effect of a single click button
@@ -997,6 +1139,8 @@ function Icon:oneClick(bool)
 	return self
 end
 
+--- Sets the caption tooltip shown while hovering (or long-pressing) the
+--- icon. Pass nothing or "" to remove it.
 function Icon:setCaption(text)
 	if text == "_hotkey_" and (self.captionText) then
 		return self
@@ -1015,6 +1159,8 @@ function Icon:setCaption(text)
 	return self
 end
 
+--- Shows a hotkey chip in the caption for a key handled by your own code —
+--- like [[Icon:bindToggleKey]]'s chip, without Material binding the key.
 function Icon:setCaptionHint(keyCodeEnum)
 	assert(typeof(keyCodeEnum) == "EnumItem", "argument[1] must be a KeyCode EnumItem!")
 	self.fakeToggleKey = keyCodeEnum
@@ -1023,29 +1169,39 @@ function Icon:setCaptionHint(keyCodeEnum)
 	return self
 end
 
+--- Removes the icon from the menu or dropdown it joined, returning it to
+--- the topbar.
 function Icon:leave()
 	local joinJanitor = self.joinJanitor
 	joinJanitor:clean()
 	return self
 end
 
+--- Moves this icon into another icon's menu (the horizontal row that
+--- expands when the parent is selected). Leave with [[Icon:leave]].
 function Icon:joinMenu(parentIcon)
 	Utility.joinFeature(self, parentIcon, parentIcon.menuIcons, parentIcon:getInstance("Menu"))
 	parentIcon.menuChildAdded:Fire(self)
 	return self
 end
 
+--- Gives this icon a menu containing the given icons — the array-of-icons
+--- way to build what [[Icon:joinMenu]] does one icon at a time.
 function Icon:setMenu(arrayOfIcons)
 	self.menuSet:Fire(arrayOfIcons)
 	return self
 end
 
+--- Sets a menu that is permanently open ([[Icon:freezeMenu]] + [[Icon:setMenu]];
+--- alias: `setFrozenMenu`).
 function Icon:setFixedMenu(arrayOfIcons)
 	self:freezeMenu(arrayOfIcons)
 	self:setMenu(arrayOfIcons)
 end
 Icon.setFrozenMenu = Icon.setFixedMenu
 
+--- Locks the icon's menu permanently open: the icon is selected, re-selects
+--- itself if deselected, and hides its toggle spot.
 function Icon:freezeMenu()
 	-- A frozen menu is a menu which is permanently locked in the
 	-- the selected state (with its toggle hidden)
@@ -1056,6 +1212,8 @@ function Icon:freezeMenu()
 	self:modifyTheme({"IconSpot", "Visible", false})
 end
 
+--- Moves this icon into another icon's dropdown (the vertical list beneath
+--- it). Leave with [[Icon:leave]].
 function Icon:joinDropdown(parentIcon)
 	parentIcon:getDropdown()
 	Utility.joinFeature(self, parentIcon, parentIcon.dropdownIcons, parentIcon:getInstance("DropdownScroller"))
@@ -1063,6 +1221,7 @@ function Icon:joinDropdown(parentIcon)
 	return self
 end
 
+--- Returns the icon's dropdown, creating it on first call.
 function Icon:getDropdown()
 	local dropdown = self.dropdown
 	if not dropdown then
@@ -1073,12 +1232,17 @@ function Icon:getDropdown()
 	return dropdown
 end
 
+--- Gives this icon a dropdown containing the given icons — the array way to
+--- build what [[Icon:joinDropdown]] does one icon at a time.
 function Icon:setDropdown(arrayOfIcons)
 	self:getDropdown()
 	self.dropdownSet:Fire(arrayOfIcons)
 	return self
 end
 
+--- Advanced: lets an instance escape the widget's clipping bounds (used
+--- internally for notices and dropdowns) by tracking an invisible
+--- placeholder. Returns the icon and the placeholder clone.
 function Icon:clipOutside(instance)
 	-- This is essential for items such as notices and dropdowns which will exceed the bounds of the widget. This is an issue
 	-- because the widget must have ClipsDescendents enabled to hide items for instance when the menu is closing or opening.
@@ -1090,6 +1254,9 @@ function Icon:clipOutside(instance)
 	return self, instanceClone
 end
 
+--- Shows a controller button prompt next to the icon for the given key.
+--- Gamepad topbar navigation sets this automatically; call it yourself only
+--- for custom prompts.
 function Icon:setIndicator(keyCode)
 	-- An indicator is a direction button prompt with an image of the given keycode. This is useful for instance
 	-- with controllers to show the user what button to press to highlight the topbar. You don't need
@@ -1102,6 +1269,9 @@ function Icon:setIndicator(keyCode)
 	self.indicatorSet:Fire(keyCode)
 end
 
+--- Replaces the icon's label with a NumberSpinner object (boatbomber's
+--- module) for animated rolling numbers — currency counters and the like.
+--- The spinner inherits the label's font and colors and resizes with the icon.
 function Icon:convertLabelToNumberSpinner(numberSpinner, callback)
 	task.defer(function()
 		
@@ -1232,6 +1402,9 @@ end
 
 
 -- DESTROY/CLEANUP
+--- Destroys the icon and everything it owns: notices cleared, menus and
+--- dropdowns left, instances and connections cleaned via the janitor
+--- (alias: `Destroy`).
 function Icon:destroy()
 	if self.isDestroyed then
 		return

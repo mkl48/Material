@@ -1,3 +1,9 @@
+--- Builds the ScreenGuis every icon lives in (TopbarStandard and
+--- TopbarCentered with their Left/Center/Right holders), tracks the topbar
+--- inset so icons line up with Roblox's own chrome, and adapts when the
+--- legacy topbar is active.
+--- @section Elements
+
 local hasBecomeOldTheme = false
 local previousInsetHeight = 0
 return function(Icon)

@@ -1,3 +1,8 @@
+--- The vertical list that unfolds beneath an icon when child icons join via
+--- [[Icon:setDropdown]] or [[Icon:joinDropdown]]. Rendered outside the widget
+--- through [[Icon:clipOutside]] so it can exceed the icon's bounds.
+--- @section Elements
+
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local Themes = require(script.Parent.Parent.Features.Themes)

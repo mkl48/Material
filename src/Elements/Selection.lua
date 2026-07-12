@@ -1,3 +1,7 @@
+--- The gamepad selection highlight: the animated gradient frame shown around
+--- the icon the controller cursor is over.
+--- @section Elements
+
 return function(Icon)
 
 	-- Credit to lolmansReturn and Canary Software for

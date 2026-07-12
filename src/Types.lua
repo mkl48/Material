@@ -2,13 +2,13 @@
 
 -- GoodSignal Types (...but simpler!)
 
---- Connection
+-- Connection
 
 type Connection<Variant... = ...any> = {
 	Disconnect: (self: Connection<Variant...>) -> (),
 }
 
---- Signal
+-- Signal
 
 type Signal<Variant... = ...any> = {
 	Connect: (self: Signal<Variant...>, func: (Variant...) -> ()) -> Connection<Variant...>,

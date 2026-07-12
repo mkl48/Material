@@ -1,3 +1,8 @@
+--- Controller support: DPadUp highlights the topbar, selection moves between
+--- icons, and the [[Indicator]] prompt is shown or hidden as the player's
+--- last input type changes.
+--- @section Features
+
 -- As the name suggests, this handles everything related to gamepads
 -- (i.e. Xbox or Playstation controllers) and their navigation
 -- I created a separate module for gamepads (and not touchpads or

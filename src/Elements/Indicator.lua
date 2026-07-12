@@ -1,3 +1,8 @@
+--- The controller prompt chip (e.g. a DPadUp glyph) telling gamepad users
+--- which button highlights the topbar, managed by [[Gamepad]] and
+--- [[Icon:setIndicator]].
+--- @section Elements
+
 return function(icon, Icon)
 
 	local widget = icon.widget

@@ -1,3 +1,8 @@
+--- Keeps icons on screen: when a holder runs out of room (small screens,
+--- many icons), out-of-bounds icons are moved into a scrolling overflow menu
+--- instead of overlapping neighbours or the screen edge.
+--- @section Features
+
 -- When designing your game for many devices and screen sizes, icons may occasionally
 -- particularly for smaller devices like phones, overlap with other icons or the bounds
 -- of the screen. The overflow handler solves this challenge by moving the out-of-bounds

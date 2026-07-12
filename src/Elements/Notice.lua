@@ -1,3 +1,8 @@
+--- The notice badge: the small counter bubble that appears on an icon's
+--- corner via [[Icon:notify]], stacking a total and clearing on a chosen
+--- signal (the icon's `deselected` by default).
+--- @section Elements
+
 return function(icon, Icon)
 
 	local notice = Instance.new("Frame")
