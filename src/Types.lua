@@ -434,6 +434,17 @@ type Methods = {
 			return nil :: any
 		end
 	),
+	setRadial: typeof(
+		--[[ Gives this icon a radial menu; the icons fan out in an arc around it on select.
+		     config is optional { radius, arc, facing } in degrees. ]]
+		function(self: Icon, arrayOfIcons: { Icon }, config: { radius: number?, arc: number?, facing: number? }?): Icon
+			return nil :: any
+		end
+	),
+	addRadialIcon: typeof(
+		--[[ Adds one icon to this icon's radial menu (creating it if needed). ]]
+		function(self: Icon, child: Icon): Icon return nil :: any end
+	),
 	setRipple: typeof(
 		--[[ Enables (default) or disables the click ripple on this icon. ]]
 		function(self: Icon, enabled: boolean): Icon return nil :: any end

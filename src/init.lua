@@ -1086,6 +1086,30 @@ function Icon:addToJanitor(callback, methodName, index)
 	return self
 end
 
+function Icon:_radial(config)
+	if not self.radialElement then
+		self.radialElement = require(iconModule.Elements.Radial)(self, config or {})
+		self:clipOutside(self.radialElement.container)
+	end
+	return self.radialElement
+end
+
+--- Gives this icon a radial menu: the given icons fan out in an arc around it
+--- when it's selected, and pull back in when deselected (like a [[Dropdown]],
+--- but radial). Optional `config` is `{ radius, arc, facing }` (degrees).
+--- @param arrayOfIcons the child icons to hold
+--- @param config optional layout `{ radius, arc, facing }`
+function Icon:setRadial(arrayOfIcons, config)
+	self:_radial(config).setIcons(arrayOfIcons or {})
+	return self
+end
+
+--- Adds one icon to this icon's radial menu (creating it if needed).
+function Icon:addRadialIcon(child)
+	self:_radial().addIcon(child)
+	return self
+end
+
 --- Enables (default) or disables the click ripple on this icon.
 function Icon:setRipple(bool)
 	if not self.rippleElement then
