@@ -12,6 +12,20 @@ return function(icon: any)
 	local clickRegion = icon:getInstance("ClickRegion")
 	local iconSpot = icon:getInstance("IconSpot")
 
+	-- a clip that fills the spot exactly, so ripples are contained by the icon
+	-- (and its rounded corners) rather than bleeding into the wider widget
+	local clip = Instance.new("Frame")
+	clip.Name = "RippleClip"
+	clip.Size = UDim2.fromScale(1, 1)
+	clip.BackgroundTransparency = 1
+	clip.ClipsDescendants = true
+	clip.ZIndex = 11
+	local spotCorner = iconSpot:FindFirstChildOfClass("UICorner")
+	local clipCorner = Instance.new("UICorner")
+	clipCorner.CornerRadius = if spotCorner then spotCorner.CornerRadius else UDim.new(1, 0)
+	clipCorner.Parent = clip
+	clip.Parent = iconSpot
+
 	icon.janitor:add(clickRegion.InputBegan:Connect(function(input)
 		if icon.rippleEnabled == false or icon.locked then
 			return
@@ -20,8 +34,8 @@ return function(icon: any)
 			and input.UserInputType ~= Enum.UserInputType.Touch then
 			return
 		end
-		local absPos = iconSpot.AbsolutePosition
-		local absSize = iconSpot.AbsoluteSize
+		local absPos = clip.AbsolutePosition
+		local absSize = clip.AbsoluteSize
 		local circle = Instance.new("Frame")
 		circle.Name = "Ripple"
 		circle.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -34,7 +48,7 @@ return function(icon: any)
 		local corner = Instance.new("UICorner")
 		corner.CornerRadius = UDim.new(1, 0)
 		corner.Parent = circle
-		circle.Parent = iconSpot
+		circle.Parent = clip
 
 		local reach = math.max(absSize.X, absSize.Y) * 2.2
 		local tween = TweenService:Create(circle, RIPPLE, {
