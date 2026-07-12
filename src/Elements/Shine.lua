@@ -1,5 +1,7 @@
 --- A light glint that periodically sweeps across the icon to say "new" or
---- "shiny". Contained by the icon button. Toggle with [[Icon:setShine]].
+--- "shiny". Done with a moving gradient on an icon-sized frame, so nothing
+--- ever extends past the icon and it can't bleed out. Toggle with
+--- [[Icon:setShine]].
 --- @section Elements
 --- @client
 
@@ -10,39 +12,33 @@ local SWEEP = TweenInfo.new(0.55, Enum.EasingStyle.Quad, Enum.EasingDirection.Ou
 return function(icon: any)
 	local iconSpot = icon:getInstance("IconSpot")
 
-	-- a clip that fills the spot exactly (and matches its rounded corners), so
-	-- the sweep is contained by the icon rather than the wider widget/button
-	local clip = Instance.new("Frame")
-	clip.Name = "ShineClip"
-	clip.Size = UDim2.fromScale(1, 1)
-	clip.BackgroundTransparency = 1
-	clip.ClipsDescendants = true
-	clip.ZIndex = 13
+	-- an icon-sized white frame; the gradient below makes all of it transparent
+	-- except a narrow bright band, and we slide that band across via Offset.
+	local shine = Instance.new("Frame")
+	shine.Name = "Shine"
+	shine.Size = UDim2.fromScale(1, 1)
+	shine.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	shine.BackgroundTransparency = 0
+	shine.BorderSizePixel = 0
+	shine.ZIndex = 13
+	shine.Visible = false
 	local spotCorner = iconSpot:FindFirstChildOfClass("UICorner")
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = if spotCorner then spotCorner.CornerRadius else UDim.new(1, 0)
-	corner.Parent = clip
-	clip.Parent = iconSpot
+	corner.Parent = shine
 
-	local streak = Instance.new("Frame")
-	streak.Name = "Shine"
-	streak.AnchorPoint = Vector2.new(0.5, 0.5)
-	streak.Position = UDim2.new(-0.3, 0, 0.5, 0)
-	streak.Size = UDim2.new(0, 14, 2, 0)
-	streak.Rotation = 18
-	streak.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	streak.BorderSizePixel = 0
-	streak.ZIndex = 13
-	streak.Visible = false
 	local gradient = Instance.new("UIGradient")
+	gradient.Rotation = 20
 	gradient.Transparency = NumberSequence.new({
 		NumberSequenceKeypoint.new(0, 1),
-		NumberSequenceKeypoint.new(0.5, 0.45),
+		NumberSequenceKeypoint.new(0.42, 1),
+		NumberSequenceKeypoint.new(0.5, 0.35),
+		NumberSequenceKeypoint.new(0.58, 1),
 		NumberSequenceKeypoint.new(1, 1),
 	})
-	gradient.Rotation = 90
-	gradient.Parent = streak
-	streak.Parent = clip
+	gradient.Offset = Vector2.new(-1.3, 0)
+	gradient.Parent = shine
+	shine.Parent = iconSpot
 
 	local enabled = false
 	local running = false
@@ -52,11 +48,11 @@ return function(icon: any)
 		end
 		running = true
 		while enabled do
-			streak.Position = UDim2.new(-0.3, 0, 0.5, 0)
-			streak.Visible = true
-			TweenService:Create(streak, SWEEP, { Position = UDim2.new(1.3, 0, 0.5, 0) }):Play()
+			gradient.Offset = Vector2.new(-1.3, 0)
+			shine.Visible = true
+			TweenService:Create(gradient, SWEEP, { Offset = Vector2.new(1.3, 0) }):Play()
 			task.wait(0.55)
-			streak.Visible = false
+			shine.Visible = false
 			task.wait(2.6)
 		end
 		running = false
