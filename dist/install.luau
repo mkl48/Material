@@ -1114,6 +1114,54 @@ function Icon:addRadialIcon(child)\
 	return self\
 end\
 \
+-- lazily create a container element (grid/carousel/tray) and clipOutside it\
+function Icon:_container(field, moduleName, config)\
+	if not self[field] then\
+		self[field] = require(iconModule.Elements[moduleName])(self, config or {})\
+		self:clipOutside(self[field].container)\
+	end\
+	return self[field]\
+end\
+\
+--- Gives this icon a grid of icons (rows × columns) that drops when selected.\
+--- Optional `config` is `{ columns, cell }`.\
+function Icon:setGrid(arrayOfIcons, config)\
+	self:_container(\"gridElement\", \"Grid\", config).setIcons(arrayOfIcons or {})\
+	return self\
+end\
+\
+--- Adds one icon to this icon's grid (creating it if needed).\
+function Icon:addGridIcon(child)\
+	self:_container(\"gridElement\", \"Grid\").addIcon(child)\
+	return self\
+end\
+\
+--- Gives this icon a carousel: a horizontal strip that scrolls through icons.\
+--- Optional `config` is `{ visible, cell }`.\
+function Icon:setCarousel(arrayOfIcons, config)\
+	self:_container(\"carouselElement\", \"Carousel\", config).setIcons(arrayOfIcons or {})\
+	return self\
+end\
+\
+--- Adds one icon to this icon's carousel (creating it if needed).\
+function Icon:addCarouselIcon(child)\
+	self:_container(\"carouselElement\", \"Carousel\").addIcon(child)\
+	return self\
+end\
+\
+--- Gives this icon a tray: a shelf of icons that slides out when selected.\
+--- Optional `config` is `{ cell }`.\
+function Icon:setTray(arrayOfIcons, config)\
+	self:_container(\"trayElement\", \"Tray\", config).setIcons(arrayOfIcons or {})\
+	return self\
+end\
+\
+--- Adds one icon to this icon's tray (creating it if needed).\
+function Icon:addTrayIcon(child)\
+	self:_container(\"trayElement\", \"Tray\").addIcon(child)\
+	return self\
+end\
+\
 --- Enables (default) or disables the click ripple on this icon.\
 function Icon:setRipple(bool)\
 	if not self.rippleElement then\
@@ -1879,6 +1927,124 @@ return function(icon)\
 	\
 	return caption\
 end"},
+{"Material/Elements/Carousel","ModuleScript","--- A carousel container: a horizontal strip that shows a few icons and scrolls\
+--- through the rest, dropping from the parent icon when selected. Good for long\
+--- lists in a small space. Holds real icons, joined like a [[Menu]]. Created\
+--- through [[Icon:setCarousel]].\
+--- @section Elements\
+--- @client\
+\
+local TweenService = game:GetService(\"TweenService\")\
+\
+local root = script.Parent.Parent\
+local Utility = require(root.Utility)\
+\
+local OPEN = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)\
+local CLOSE = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.In)\
+\
+return function(icon: any, config: any)\
+	config = config or {}\
+	local Icon = require(icon.iconModule)\
+	local janitor = icon.dropdownJanitor\
+	local visible = config.visible or 4\
+	local cell = config.cell or 54\
+	local pad = 6\
+	local width = visible * cell + (visible + 1) * pad\
+\
+	local container = Instance.new(\"Frame\")\
+	container.Name = \"Carousel\"\
+	container.AnchorPoint = Vector2.new(0.5, 0)\
+	container.Position = UDim2.new(0.5, 0, 1, 10)\
+	container.Size = UDim2.fromOffset(width, 0)\
+	container.BackgroundColor3 = Color3.fromRGB(18, 18, 21)\
+	container.BackgroundTransparency = 0.05\
+	container.BorderSizePixel = 0\
+	container.ClipsDescendants = true\
+	container.ZIndex = -2\
+	container.Visible = false\
+	container.Parent = icon.widget\
+	local corner = Instance.new(\"UICorner\")\
+	corner.CornerRadius = UDim.new(0, 12)\
+	corner.Parent = container\
+\
+	local scroller = Instance.new(\"ScrollingFrame\")\
+	scroller.Name = \"CarouselScroller\"\
+	scroller.Size = UDim2.new(1, 0, 0, cell + pad * 2)\
+	scroller.BackgroundTransparency = 1\
+	scroller.BorderSizePixel = 0\
+	scroller.ScrollingDirection = Enum.ScrollingDirection.X\
+	scroller.AutomaticCanvasSize = Enum.AutomaticSize.X\
+	scroller.CanvasSize = UDim2.new()\
+	scroller.ScrollBarThickness = 3\
+	scroller.ScrollBarImageColor3 = Color3.fromRGB(255, 255, 255)\
+	scroller.ScrollBarImageTransparency = 0.7\
+	scroller.Parent = container\
+	local scrollPad = Instance.new(\"UIPadding\")\
+	local p = UDim.new(0, pad)\
+	scrollPad.PaddingTop, scrollPad.PaddingBottom, scrollPad.PaddingLeft, scrollPad.PaddingRight = p, p, p, p\
+	scrollPad.Parent = scroller\
+	local list = Instance.new(\"UIListLayout\")\
+	list.FillDirection = Enum.FillDirection.Horizontal\
+	list.VerticalAlignment = Enum.VerticalAlignment.Center\
+	list.Padding = UDim.new(0, pad)\
+	list.SortOrder = Enum.SortOrder.LayoutOrder\
+	list.Parent = scroller\
+\
+	local carouselIcons = {}\
+	local openHeight = cell + pad * 2\
+\
+	local function resize(open: boolean)\
+		if open then\
+			container.Visible = true\
+			TweenService:Create(container, OPEN, { Size = UDim2.fromOffset(width, openHeight) }):Play()\
+		else\
+			local tween = TweenService:Create(container, CLOSE, { Size = UDim2.fromOffset(width, 0) })\
+			tween:Play()\
+			tween.Completed:Once(function()\
+				if not icon.isSelected then\
+					container.Visible = false\
+				end\
+			end)\
+		end\
+	end\
+	janitor:add(icon.toggled:Connect(function()\
+		resize(icon.isSelected)\
+	end))\
+\
+	local function themeChild(child: any)\
+		child:modifyTheme({\
+			{ \"Widget\", \"MinimumWidth\", cell },\
+			{ \"Widget\", \"MinimumHeight\", cell },\
+			{ \"IconCorners\", \"CornerRadius\", UDim.new(0, 10) },\
+		})\
+	end\
+\
+	local handle = {}\
+	handle.container = container\
+	function handle.setIcons(arrayOfIcons: { any })\
+		for _, uid in carouselIcons do\
+			local existing = Icon.getIconByUID(uid)\
+			if existing then\
+				existing:destroy()\
+			end\
+		end\
+		table.clear(carouselIcons)\
+		for _, child in arrayOfIcons do\
+			Utility.joinFeature(child, icon, carouselIcons, scroller)\
+			themeChild(child)\
+		end\
+		resize(icon.isSelected)\
+		return handle\
+	end\
+	function handle.addIcon(child: any)\
+		Utility.joinFeature(child, icon, carouselIcons, scroller)\
+		themeChild(child)\
+		resize(icon.isSelected)\
+		return handle\
+	end\
+	return handle\
+end\
+"},
 {"Material/Elements/Container","ModuleScript","--- Builds the ScreenGuis every icon lives in (TopbarStandard and\
 --- TopbarCentered with their Left/Center/Right holders), tracks the topbar\
 --- inset so icons line up with Roblox's own chrome, and adapts when the\
@@ -2420,6 +2586,119 @@ return function(icon)\
 \
 	return dropdown\
 end"},
+{"Material/Elements/Grid","ModuleScript","--- A grid container: child icons arranged in rows × columns that drops from the\
+--- parent icon when selected (inventories, shops, emote pickers). Holds real\
+--- icons, joined like a [[Dropdown]]. Created through [[Icon:setGrid]].\
+--- @section Elements\
+--- @client\
+\
+local TweenService = game:GetService(\"TweenService\")\
+local RunService = game:GetService(\"RunService\")\
+\
+local root = script.Parent.Parent\
+local Utility = require(root.Utility)\
+\
+local OPEN = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)\
+local CLOSE = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.In)\
+\
+return function(icon: any, config: any)\
+	config = config or {}\
+	local Icon = require(icon.iconModule)\
+	local janitor = icon.dropdownJanitor\
+	local columns = config.columns or 3\
+	local cell = config.cell or 54\
+	local pad = 6\
+	local width = columns * cell + (columns + 1) * pad\
+\
+	local container = Instance.new(\"Frame\")\
+	container.Name = \"Grid\"\
+	container.AnchorPoint = Vector2.new(0.5, 0)\
+	container.Position = UDim2.new(0.5, 0, 1, 10)\
+	container.Size = UDim2.fromOffset(width, 0)\
+	container.BackgroundColor3 = Color3.fromRGB(18, 18, 21)\
+	container.BackgroundTransparency = 0.05\
+	container.BorderSizePixel = 0\
+	container.ClipsDescendants = true\
+	container.ZIndex = -2\
+	container.Visible = false\
+	container.Parent = icon.widget\
+	local corner = Instance.new(\"UICorner\")\
+	corner.CornerRadius = UDim.new(0, 12)\
+	corner.Parent = container\
+\
+	local content = Instance.new(\"Frame\")\
+	content.Name = \"GridContent\"\
+	content.Size = UDim2.new(1, 0, 0, 0)\
+	content.AutomaticSize = Enum.AutomaticSize.Y\
+	content.BackgroundTransparency = 1\
+	content.Parent = container\
+	local gridPad = Instance.new(\"UIPadding\")\
+	local p = UDim.new(0, pad)\
+	gridPad.PaddingTop, gridPad.PaddingBottom, gridPad.PaddingLeft, gridPad.PaddingRight = p, p, p, p\
+	gridPad.Parent = content\
+	local grid = Instance.new(\"UIGridLayout\")\
+	grid.CellSize = UDim2.fromOffset(cell, cell)\
+	grid.CellPadding = UDim2.fromOffset(pad, pad)\
+	grid.FillDirectionMaxCells = columns\
+	grid.SortOrder = Enum.SortOrder.LayoutOrder\
+	grid.Parent = content\
+\
+	local gridIcons = {}\
+\
+	local function resize(open: boolean)\
+		if open then\
+			container.Visible = true\
+			RunService.Heartbeat:Wait()\
+			local height = content.AbsoluteSize.Y\
+			TweenService:Create(container, OPEN, { Size = UDim2.fromOffset(width, height) }):Play()\
+		else\
+			local tween = TweenService:Create(container, CLOSE, { Size = UDim2.fromOffset(width, 0) })\
+			tween:Play()\
+			tween.Completed:Once(function()\
+				if not icon.isSelected then\
+					container.Visible = false\
+				end\
+			end)\
+		end\
+	end\
+	janitor:add(icon.toggled:Connect(function()\
+		resize(icon.isSelected)\
+	end))\
+\
+	local function themeChild(child: any)\
+		child:modifyTheme({\
+			{ \"Widget\", \"MinimumWidth\", cell },\
+			{ \"Widget\", \"MinimumHeight\", cell },\
+			{ \"IconCorners\", \"CornerRadius\", UDim.new(0, 10) },\
+		})\
+	end\
+\
+	local handle = {}\
+	handle.container = container\
+	function handle.setIcons(arrayOfIcons: { any })\
+		for _, uid in gridIcons do\
+			local existing = Icon.getIconByUID(uid)\
+			if existing then\
+				existing:destroy()\
+			end\
+		end\
+		table.clear(gridIcons)\
+		for _, child in arrayOfIcons do\
+			Utility.joinFeature(child, icon, gridIcons, content)\
+			themeChild(child)\
+		end\
+		resize(icon.isSelected)\
+		return handle\
+	end\
+	function handle.addIcon(child: any)\
+		Utility.joinFeature(child, icon, gridIcons, content)\
+		themeChild(child)\
+		resize(icon.isSelected)\
+		return handle\
+	end\
+	return handle\
+end\
+"},
 {"Material/Elements/Indicator","ModuleScript","--- The controller prompt chip (e.g. a DPadUp glyph) telling gamepad users\
 --- which button highlights the topbar, managed by [[Gamepad]] and\
 --- [[Icon:setIndicator]].\
@@ -3058,7 +3337,8 @@ return function(icon: any, config: any)\
 	container.Size = UDim2.fromOffset(radius * 3, radius * 3)\
 	container.BackgroundTransparency = 1\
 	container.ClipsDescendants = false\
-	container.ZIndex = -2\
+	container.Active = false          -- never sink input meant for what's behind\
+	container.ZIndex = 40             -- fan sits on top, not cut off by neighbours\
 	container.Visible = false\
 	container.Parent = icon.widget\
 \
@@ -3344,6 +3624,110 @@ return function(icon: any)\
 		if bool then\
 			task.spawn(loop)\
 		end\
+	end\
+	return handle\
+end\
+"},
+{"Material/Elements/Tray","ModuleScript","--- A tray container: a small shelf of icons that slides out from the parent\
+--- icon (and fades in) when selected, sliding back on deselect. Holds real\
+--- icons in a row, joined like a [[Menu]]. Created through [[Icon:setTray]].\
+--- @section Elements\
+--- @client\
+\
+local TweenService = game:GetService(\"TweenService\")\
+\
+local root = script.Parent.Parent\
+local Utility = require(root.Utility)\
+\
+local OPEN = TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out)\
+local CLOSE = TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In)\
+local OUT_POS = UDim2.new(0.5, 0, 1, 12)\
+local IN_POS = UDim2.new(0.5, 0, 1, -6)\
+\
+return function(icon: any, config: any)\
+	config = config or {}\
+	local Icon = require(icon.iconModule)\
+	local janitor = icon.dropdownJanitor\
+	local cell = config.cell or 50\
+	local pad = 6\
+\
+	local tray = Instance.new(\"CanvasGroup\")\
+	tray.Name = \"Tray\"\
+	tray.AnchorPoint = Vector2.new(0.5, 0)\
+	tray.Position = IN_POS\
+	tray.Size = UDim2.fromOffset(0, cell + pad * 2)\
+	tray.AutomaticSize = Enum.AutomaticSize.X\
+	tray.BackgroundColor3 = Color3.fromRGB(18, 18, 21)\
+	tray.BackgroundTransparency = 0.05\
+	tray.BorderSizePixel = 0\
+	tray.GroupTransparency = 1\
+	tray.ZIndex = 30\
+	tray.Visible = false\
+	tray.Parent = icon.widget\
+	local corner = Instance.new(\"UICorner\")\
+	corner.CornerRadius = UDim.new(0, 12)\
+	corner.Parent = tray\
+	local trayPad = Instance.new(\"UIPadding\")\
+	local p = UDim.new(0, pad)\
+	trayPad.PaddingTop, trayPad.PaddingBottom, trayPad.PaddingLeft, trayPad.PaddingRight = p, p, p, p\
+	trayPad.Parent = tray\
+	local list = Instance.new(\"UIListLayout\")\
+	list.FillDirection = Enum.FillDirection.Horizontal\
+	list.VerticalAlignment = Enum.VerticalAlignment.Center\
+	list.Padding = UDim.new(0, pad)\
+	list.SortOrder = Enum.SortOrder.LayoutOrder\
+	list.Parent = tray\
+\
+	local trayIcons = {}\
+\
+	local function slide(open: boolean)\
+		if open then\
+			tray.Visible = true\
+			TweenService:Create(tray, OPEN, { Position = OUT_POS, GroupTransparency = 0 }):Play()\
+		else\
+			local tween = TweenService:Create(tray, CLOSE, { Position = IN_POS, GroupTransparency = 1 })\
+			tween:Play()\
+			tween.Completed:Once(function()\
+				if not icon.isSelected then\
+					tray.Visible = false\
+				end\
+			end)\
+		end\
+	end\
+	janitor:add(icon.toggled:Connect(function()\
+		slide(icon.isSelected)\
+	end))\
+\
+	local function themeChild(child: any)\
+		child:modifyTheme({\
+			{ \"Widget\", \"MinimumWidth\", cell },\
+			{ \"Widget\", \"MinimumHeight\", cell },\
+			{ \"IconCorners\", \"CornerRadius\", UDim.new(0, 10) },\
+		})\
+	end\
+\
+	local handle = {}\
+	handle.container = tray\
+	function handle.setIcons(arrayOfIcons: { any })\
+		for _, uid in trayIcons do\
+			local existing = Icon.getIconByUID(uid)\
+			if existing then\
+				existing:destroy()\
+			end\
+		end\
+		table.clear(trayIcons)\
+		for _, child in arrayOfIcons do\
+			Utility.joinFeature(child, icon, trayIcons, tray)\
+			themeChild(child)\
+		end\
+		slide(icon.isSelected)\
+		return handle\
+	end\
+	function handle.addIcon(child: any)\
+		Utility.joinFeature(child, icon, trayIcons, tray)\
+		themeChild(child)\
+		slide(icon.isSelected)\
+		return handle\
 	end\
 	return handle\
 end\
@@ -5807,6 +6191,36 @@ type Methods = {\
 		--[[ Adds one icon to this icon's radial menu (creating it if needed). ]]\
 		function(self: Icon, child: Icon): Icon return nil :: any end\
 	),\
+	setGrid: typeof(\
+		--[[ Gives this icon a grid of icons (rows x columns). config is optional { columns, cell }. ]]\
+		function(self: Icon, arrayOfIcons: { Icon }, config: { columns: number?, cell: number? }?): Icon\
+			return nil :: any\
+		end\
+	),\
+	addGridIcon: typeof(\
+		--[[ Adds one icon to this icon's grid (creating it if needed). ]]\
+		function(self: Icon, child: Icon): Icon return nil :: any end\
+	),\
+	setCarousel: typeof(\
+		--[[ Gives this icon a horizontal scrolling carousel. config is optional { visible, cell }. ]]\
+		function(self: Icon, arrayOfIcons: { Icon }, config: { visible: number?, cell: number? }?): Icon\
+			return nil :: any\
+		end\
+	),\
+	addCarouselIcon: typeof(\
+		--[[ Adds one icon to this icon's carousel (creating it if needed). ]]\
+		function(self: Icon, child: Icon): Icon return nil :: any end\
+	),\
+	setTray: typeof(\
+		--[[ Gives this icon a slide-out tray of icons. config is optional { cell }. ]]\
+		function(self: Icon, arrayOfIcons: { Icon }, config: { cell: number? }?): Icon\
+			return nil :: any\
+		end\
+	),\
+	addTrayIcon: typeof(\
+		--[[ Adds one icon to this icon's tray (creating it if needed). ]]\
+		function(self: Icon, child: Icon): Icon return nil :: any end\
+	),\
 	setRipple: typeof(\
 		--[[ Enables (default) or disables the click ripple on this icon. ]]\
 		function(self: Icon, enabled: boolean): Icon return nil :: any end\
@@ -6266,7 +6680,9 @@ function Utility.joinFeature(originalIcon, parentIcon, iconsArray, scrollingFram
 	end\
 	joinJanitor:add(parentIcon.alignmentChanged:Connect(updateAlignent))\
 	updateAlignent()\
-	originalIcon:modifyTheme({\"IconButton\", \"BackgroundTransparency\", 1}, \"JoinModification\")\
+	-- keep the joined icon's own background (don't hide it) so container icons\
+	-- (dropdown/menu/radial/grid/…) look like normal icons\
+	--originalIcon:modifyTheme({\"IconButton\", \"BackgroundTransparency\", 1}, \"JoinModification\")\
 	originalIcon:modifyTheme({\"ClickRegion\", \"Active\", false}, \"JoinModification\")\
 	if parentIcon.childModifications then\
 		-- We defer so that the default values (such as dropdown\

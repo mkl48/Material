@@ -445,6 +445,36 @@ type Methods = {
 		--[[ Adds one icon to this icon's radial menu (creating it if needed). ]]
 		function(self: Icon, child: Icon): Icon return nil :: any end
 	),
+	setGrid: typeof(
+		--[[ Gives this icon a grid of icons (rows x columns). config is optional { columns, cell }. ]]
+		function(self: Icon, arrayOfIcons: { Icon }, config: { columns: number?, cell: number? }?): Icon
+			return nil :: any
+		end
+	),
+	addGridIcon: typeof(
+		--[[ Adds one icon to this icon's grid (creating it if needed). ]]
+		function(self: Icon, child: Icon): Icon return nil :: any end
+	),
+	setCarousel: typeof(
+		--[[ Gives this icon a horizontal scrolling carousel. config is optional { visible, cell }. ]]
+		function(self: Icon, arrayOfIcons: { Icon }, config: { visible: number?, cell: number? }?): Icon
+			return nil :: any
+		end
+	),
+	addCarouselIcon: typeof(
+		--[[ Adds one icon to this icon's carousel (creating it if needed). ]]
+		function(self: Icon, child: Icon): Icon return nil :: any end
+	),
+	setTray: typeof(
+		--[[ Gives this icon a slide-out tray of icons. config is optional { cell }. ]]
+		function(self: Icon, arrayOfIcons: { Icon }, config: { cell: number? }?): Icon
+			return nil :: any
+		end
+	),
+	addTrayIcon: typeof(
+		--[[ Adds one icon to this icon's tray (creating it if needed). ]]
+		function(self: Icon, child: Icon): Icon return nil :: any end
+	),
 	setRipple: typeof(
 		--[[ Enables (default) or disables the click ripple on this icon. ]]
 		function(self: Icon, enabled: boolean): Icon return nil :: any end

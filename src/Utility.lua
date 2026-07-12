@@ -384,7 +384,9 @@ function Utility.joinFeature(originalIcon, parentIcon, iconsArray, scrollingFram
 	end
 	joinJanitor:add(parentIcon.alignmentChanged:Connect(updateAlignent))
 	updateAlignent()
-	originalIcon:modifyTheme({"IconButton", "BackgroundTransparency", 1}, "JoinModification")
+	-- keep the joined icon's own background (don't hide it) so container icons
+	-- (dropdown/menu/radial/grid/…) look like normal icons
+	--originalIcon:modifyTheme({"IconButton", "BackgroundTransparency", 1}, "JoinModification")
 	originalIcon:modifyTheme({"ClickRegion", "Active", false}, "JoinModification")
 	if parentIcon.childModifications then
 		-- We defer so that the default values (such as dropdown

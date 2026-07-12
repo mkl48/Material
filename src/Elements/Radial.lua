@@ -39,7 +39,8 @@ return function(icon: any, config: any)
 	container.Size = UDim2.fromOffset(radius * 3, radius * 3)
 	container.BackgroundTransparency = 1
 	container.ClipsDescendants = false
-	container.ZIndex = -2
+	container.Active = false          -- never sink input meant for what's behind
+	container.ZIndex = 40             -- fan sits on top, not cut off by neighbours
 	container.Visible = false
 	container.Parent = icon.widget
 

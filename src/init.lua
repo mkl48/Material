@@ -1110,6 +1110,54 @@ function Icon:addRadialIcon(child)
 	return self
 end
 
+-- lazily create a container element (grid/carousel/tray) and clipOutside it
+function Icon:_container(field, moduleName, config)
+	if not self[field] then
+		self[field] = require(iconModule.Elements[moduleName])(self, config or {})
+		self:clipOutside(self[field].container)
+	end
+	return self[field]
+end
+
+--- Gives this icon a grid of icons (rows × columns) that drops when selected.
+--- Optional `config` is `{ columns, cell }`.
+function Icon:setGrid(arrayOfIcons, config)
+	self:_container("gridElement", "Grid", config).setIcons(arrayOfIcons or {})
+	return self
+end
+
+--- Adds one icon to this icon's grid (creating it if needed).
+function Icon:addGridIcon(child)
+	self:_container("gridElement", "Grid").addIcon(child)
+	return self
+end
+
+--- Gives this icon a carousel: a horizontal strip that scrolls through icons.
+--- Optional `config` is `{ visible, cell }`.
+function Icon:setCarousel(arrayOfIcons, config)
+	self:_container("carouselElement", "Carousel", config).setIcons(arrayOfIcons or {})
+	return self
+end
+
+--- Adds one icon to this icon's carousel (creating it if needed).
+function Icon:addCarouselIcon(child)
+	self:_container("carouselElement", "Carousel").addIcon(child)
+	return self
+end
+
+--- Gives this icon a tray: a shelf of icons that slides out when selected.
+--- Optional `config` is `{ cell }`.
+function Icon:setTray(arrayOfIcons, config)
+	self:_container("trayElement", "Tray", config).setIcons(arrayOfIcons or {})
+	return self
+end
+
+--- Adds one icon to this icon's tray (creating it if needed).
+function Icon:addTrayIcon(child)
+	self:_container("trayElement", "Tray").addIcon(child)
+	return self
+end
+
 --- Enables (default) or disables the click ripple on this icon.
 function Icon:setRipple(bool)
 	if not self.rippleElement then
