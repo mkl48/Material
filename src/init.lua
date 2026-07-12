@@ -73,13 +73,6 @@ local Types = require(script.Types)
 -- TYPES
 export type Icon = Types.Icon
 export type IconState = Types.IconState
-export type Window = Types.Window
-export type Toast = Types.Toast
-export type ToastOptions = Types.ToastOptions
-export type Dialog = Types.Dialog
-export type DialogOptions = Types.DialogOptions
-export type DialogButton = Types.DialogButton
-export type Tooltip = Types.Tooltip
 
 
 
@@ -139,12 +132,6 @@ Icon.iconAdded = Signal.new()
 Icon.iconRemoved = Signal.new()
 Icon.iconChanged = Signal.new()
 
--- Overlays (Material's additions over TopbarPlus), themed to match the icons.
--- The Window is an element reached through icon:setWindow (like the dropdown),
--- not a static here.
-Icon.Toast = require(iconModule.Overlays.Toast)
-Icon.Dialog = require(iconModule.Overlays.Dialog)
-Icon.Tooltip = require(iconModule.Overlays.Tooltip)
 
 
 
@@ -250,7 +237,6 @@ function Icon.new()
 	self.joinJanitor = janitor:add(Janitor.new())
 	self.menuJanitor = janitor:add(Janitor.new())
 	self.dropdownJanitor = janitor:add(Janitor.new())
-	self.windowJanitor = janitor:add(Janitor.new())
 
 	-- Register
 	local iconUID = Utility.generateUID()
@@ -1097,40 +1083,6 @@ end
 --- janitor so it is cleaned up when the icon is destroyed.
 function Icon:addToJanitor(callback, methodName, index)
 	self.janitor:add(callback, methodName, index)
-	return self
-end
-
---- Gives this icon a [[Window]] — a titled panel that drops from the icon and
---- opens when the icon is selected, closes when it's deselected (like a
---- [[Dropdown]], but a panel). Returns a window handle you can populate with
---- `addToWindow(gui)` (content) or `addIcon(icon)` (icons, like a dropdown).
---- Themed to match the topbar; its close button is a real icon.
----
---- @param config optional `{ title, width, height }`
---- @return the window handle (already wired to this icon)
-function Icon:setWindow(config)
-	local handle = require(iconModule.Elements.Window)(self, config or {})
-	self:clipOutside(handle.frame)
-	self.boundWindow = handle
-	return handle
-end
-
---- Returns the window handle created for this icon by [[Icon:setWindow]], or nil.
-function Icon:getWindow()
-	return self.boundWindow
-end
-
---- Adds a GuiObject to this icon's window (creating the window if needed).
-function Icon:addToWindow(guiObject)
-	local handle = self.boundWindow or self:setWindow()
-	handle:addToWindow(guiObject)
-	return self
-end
-
---- Adds an icon into this icon's window, like adding one to a dropdown/menu.
-function Icon:addWindowIcon(childIcon)
-	local handle = self.boundWindow or self:setWindow()
-	handle:addIcon(childIcon)
 	return self
 end
 

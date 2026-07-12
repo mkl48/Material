@@ -25,63 +25,6 @@ export type EventSource = "User" | "OneClick" | "AutoDeselect" | "HideParentFeat
 export type Modification = { any }
 
 
----------------------- WINDOWS & OVERLAYS (Material additions) ----------------------
-
--- The handle icon:setWindow returns — a titled panel that drops from the icon,
--- opening on select / closing on deselect (like a dropdown). Composed of icons.
-export type Window = {
-	frame: Frame,
-	body: ScrollingFrame,
-	icon: any,
-	setTitle: (self: Window, text: string) -> Window,
-	setSize: (self: Window, width: number, height: number) -> Window,
-	getBody: (self: Window) -> ScrollingFrame,
-	addToWindow: (self: Window, guiObject: GuiObject) -> Window,
-	addIcon: (self: Window, childIcon: any) -> Window,
-}
-
--- Config accepted by icon:setWindow(); every field optional.
-export type WindowConfig = {
-	title: string?,
-	width: number?,
-	height: number?,
-}
-
-export type ToastOptions = {
-	duration: number?,          -- seconds before auto-dismiss (default 3)
-	icon: (number | string)?,   -- optional leading icon (asset id or string)
-	action: string?,            -- optional action button label
-	onAction: (() -> ())?,      -- action button callback
-	color: Color3?,             -- action button colour (default Roblox blue)
-}
-export type Toast = {
-	show: (text: string, options: ToastOptions?) -> () -> (),
-}
-
-export type DialogButton = {
-	text: string,
-	primary: boolean?,
-	danger: boolean?,
-	onClick: (() -> ())?,
-}
-export type DialogOptions = {
-	title: string?,
-	message: string,
-	buttons: { DialogButton }?,
-	dismissable: boolean?,
-	width: number?,
-}
-export type DialogHandle = { close: () -> () }
-export type Dialog = {
-	show: (options: DialogOptions) -> DialogHandle,
-	confirm: (message: string, onConfirm: () -> (), onCancel: (() -> ())?) -> DialogHandle,
-}
-
-export type Tooltip = {
-	attach: (guiObject: GuiObject, text: string) -> () -> (),
-}
-
-
 type StaticFunctions = {
 	getIcons: typeof(
 		--[[
@@ -491,40 +434,6 @@ type Methods = {
 			return nil :: any
 		end
 	),
-	setWindow: typeof(
-		--[[
-			Gives this icon a window: a titled panel that drops from the icon and opens
-			when the icon is selected, closes when deselected (like a dropdown). Returns
-			the window handle; populate it with :addToWindow(gui) or :addIcon(icon).
-		]]
-		function(self: Icon, config: WindowConfig?): Window
-			return (nil :: any) :: Window
-		end
-	),
-	getWindow: typeof(
-		--[[
-			Returns the window handle created for this icon by setWindow, or nil.
-		]]
-		function(self: Icon): Window?
-			return (nil :: any) :: Window?
-		end
-	),
-	addToWindow: typeof(
-		--[[
-			Adds a GuiObject to this icon's window (creating the window if needed).
-		]]
-		function(self: Icon, guiObject: GuiObject): Icon
-			return nil :: any
-		end
-	),
-	addWindowIcon: typeof(
-		--[[
-			Adds an icon into this icon's window, like adding one to a dropdown/menu.
-		]]
-		function(self: Icon, childIcon: Icon): Icon
-			return nil :: any
-		end
-	),
 	setRipple: typeof(
 		--[[ Enables (default) or disables the click ripple on this icon. ]]
 		function(self: Icon, enabled: boolean): Icon return nil :: any end
@@ -595,10 +504,6 @@ export type StaticIcon = {
 			return (nil :: any) :: Icon
 		end
 	),
-	-- Material's overlays (the Window is reached via icon:setWindow)
-	Toast: Toast,
-	Dialog: Dialog,
-	Tooltip: Tooltip,
 } & StaticFunctions
 
 return {}

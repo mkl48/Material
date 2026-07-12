@@ -15,22 +15,12 @@
 
 ---
 
-Material starts as a fork of [TopbarPlus](https://github.com/1ForeverHD/TopbarPlus)
-by ForeverHD (vendored at v3.4.0, commit `f44992b`) — every existing TopbarPlus
-icon runs unchanged — and grows outward into a small in-experience UI framework
-that emulates Roblox's own core UI:
-
-- **Icons** — the full TopbarPlus surface, with the timing-hack layout bugs and
-  the update phone-home on the fix list.
-- **Windows** — a titled panel that drops from an icon and opens when the icon is
-  selected, exactly like a dropdown (`icon:setWindow{ title = "Shop" }`). Built
-  as a TopbarPlus element and themed through the icon, so it matches the topbar.
-  Fill it with `:addToWindow(gui)` or, like a dropdown/menu, with `:addIcon(icon)`.
-- **Overlays** — `Toast` snackbars, modal `Dialog`s (buttons are real icons), and
-  rich `Tooltip`s for any GuiObject.
-
-Everything reuses TopbarPlus's theme (panel colour `18,18,21`, BuilderSans, the
-shared shadow), so the panels read as part of the same topbar — not a separate UI.
+Material is a fork of [TopbarPlus](https://github.com/1ForeverHD/TopbarPlus) by
+ForeverHD (vendored at v3.4.0, commit `f44992b`) — every existing TopbarPlus icon
+runs unchanged — that adds small icon elements built the TopbarPlus way (each a
+`function(icon)` element attached to the icon and driven by its theme): a click
+**ripple**, attention **motion** (`pulse` / `bounce` / `wobble`), a **cooldown /
+progress** indicator, a status **pip**, and a **shine** sweep.
 
 > **Status: pre-release, Studio-verified only.** The Icon layer is the vendored
 > upstream baseline; the window/overlay layer is new and needs real Studio

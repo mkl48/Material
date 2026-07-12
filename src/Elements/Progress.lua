@@ -6,8 +6,7 @@
 
 local TweenService = game:GetService("TweenService")
 
-local root = script.Parent.Parent
-local Skin = require(root.Skin)
+local ACCENT = Color3.fromRGB(0, 116, 189)
 
 return function(icon: any)
 	local iconSpot = icon:getInstance("IconSpot")
@@ -31,7 +30,7 @@ return function(icon: any)
 	fill.AnchorPoint = Vector2.new(0, 0.5)
 	fill.Position = UDim2.fromScale(0, 0.5)
 	fill.Size = UDim2.fromScale(0, 1)
-	fill.BackgroundColor3 = Skin.Accent
+	fill.BackgroundColor3 = ACCENT
 	fill.BorderSizePixel = 0
 	local fillCorner = Instance.new("UICorner")
 	fillCorner.CornerRadius = UDim.new(1, 0)
@@ -61,7 +60,7 @@ return function(icon: any)
 	function progress.cooldown(seconds: number)
 		track.Visible = true
 		fill.Size = UDim2.fromScale(1, 1)
-		fill.BackgroundColor3 = Skin.Accent
+		fill.BackgroundColor3 = ACCENT
 		local tween = TweenService:Create(fill, TweenInfo.new(seconds, Enum.EasingStyle.Linear), {
 			Size = UDim2.fromScale(0, 1),
 		})
