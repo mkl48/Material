@@ -1138,6 +1138,77 @@ function Icon:addWindowIcon(childIcon)\
 	return self\
 end\
 \
+--- Enables (default) or disables the click ripple on this icon.\
+function Icon:setRipple(bool)\
+	if not self.rippleElement then\
+		self.rippleElement = require(iconModule.Elements.Ripple)(self)\
+	end\
+	self.rippleEnabled = bool ~= false\
+	return self\
+end\
+\
+function Icon:_motion()\
+	if not self.motionElement then\
+		self.motionElement = require(iconModule.Elements.Motion)(self)\
+	end\
+	return self.motionElement\
+end\
+\
+--- Plays a quick pulse (a grow-and-settle) to draw attention to the icon.\
+function Icon:pulse()\
+	self:_motion().pulse()\
+	return self\
+end\
+\
+--- Plays a springy bounce on the icon.\
+function Icon:bounce()\
+	self:_motion().bounce()\
+	return self\
+end\
+\
+--- Plays a quick rotational wobble on the icon.\
+function Icon:wobble()\
+	self:_motion().wobble()\
+	return self\
+end\
+\
+--- Sets the icon's progress bar to a 0..1 fraction (0 hides it).\
+function Icon:setProgress(alpha)\
+	if not self.progressElement then\
+		self.progressElement = require(iconModule.Elements.Progress)(self)\
+	end\
+	self.progressElement.set(alpha)\
+	return self\
+end\
+\
+--- Runs a cooldown wipe: the progress bar fills, then drains over `seconds`.\
+function Icon:cooldown(seconds)\
+	if not self.progressElement then\
+		self.progressElement = require(iconModule.Elements.Progress)(self)\
+	end\
+	self.progressElement.cooldown(seconds)\
+	return self\
+end\
+\
+--- Shows a status pip (a small corner dot) in the given colour (Color3 or a\
+--- hex string), or hides it when `color` is nil.\
+function Icon:setPip(color)\
+	if not self.pipElement then\
+		self.pipElement = require(iconModule.Elements.Pip)(self)\
+	end\
+	self.pipElement.set(color)\
+	return self\
+end\
+\
+--- Turns a periodic shine sweep on or off.\
+function Icon:setShine(bool)\
+	if not self.shineElement then\
+		self.shineElement = require(iconModule.Elements.Shine)(self)\
+	end\
+	self.shineElement.set(bool)\
+	return self\
+end\
+\
 --- Blocks all user input on the icon (clicks, touches, toggle keys). Undo\
 --- with [[Icon:unlock]].\
 function Icon:lock()\
@@ -2653,6 +2724,58 @@ return function(icon)\
 	\
 	return menu\
 end"},
+{"Material/Elements/Motion","ModuleScript","--- Attention animations — quick one-shot juice on an icon to draw the eye\
+--- ([[Icon:pulse]], [[Icon:bounce]], [[Icon:wobble]]). Drives a UIScale +\
+--- Rotation on the icon spot, so it never fights the widget's own layout.\
+--- @section Elements\
+--- @client\
+\
+local TweenService = game:GetService(\"TweenService\")\
+\
+return function(icon: any)\
+	local iconSpot = icon:getInstance(\"IconSpot\")\
+	local scale = iconSpot:FindFirstChild(\"MotionScale\") :: UIScale?\
+	if not scale then\
+		scale = Instance.new(\"UIScale\")\
+		;(scale :: UIScale).Name = \"MotionScale\"\
+		;(scale :: UIScale).Parent = iconSpot\
+	end\
+	local uiScale = scale :: UIScale\
+\
+	local function to(target: number, info: TweenInfo)\
+		TweenService:Create(uiScale, info, { Scale = target }):Play()\
+	end\
+\
+	local motion = {}\
+\
+	--- grow slightly, then settle\
+	function motion.pulse()\
+		to(1.14, TweenInfo.new(0.11, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))\
+		task.delay(0.11, function()\
+			to(1, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out))\
+		end)\
+	end\
+\
+	--- dip, then overshoot back up\
+	function motion.bounce()\
+		to(0.82, TweenInfo.new(0.09, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))\
+		task.delay(0.09, function()\
+			to(1, TweenInfo.new(0.34, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out))\
+		end)\
+	end\
+\
+	--- quick rotational shake\
+	function motion.wobble()\
+		local info = TweenInfo.new(0.07, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut, 5, true)\
+		TweenService:Create(iconSpot, info, { Rotation = 8 }):Play()\
+		task.delay(0.07 * 12, function()\
+			iconSpot.Rotation = 0\
+		end)\
+	end\
+\
+	return motion\
+end\
+"},
 {"Material/Elements/Notice","ModuleScript","--- The notice badge: the small counter bubble that appears on an icon's\
 --- corner via [[Icon:notify]], stacking a total and clearing on a chosen\
 --- signal (the icon's `deselected` by default).\
@@ -2771,6 +2894,182 @@ return function(icon, Icon)\
 	\
 	return notice\
 end"},
+{"Material/Elements/Pip","ModuleScript","--- A small status dot in the icon's top-right corner — online / new / alert —\
+--- distinct from the numbered notice badge. Set a colour with [[Icon:setPip]];\
+--- pass nil to hide it.\
+--- @section Elements\
+--- @client\
+\
+return function(icon: any)\
+	local iconSpot = icon:getInstance(\"IconSpot\")\
+\
+	local pip = Instance.new(\"Frame\")\
+	pip.Name = \"StatusPip\"\
+	pip.AnchorPoint = Vector2.new(1, 0)\
+	pip.Position = UDim2.new(1, -5, 0, 5)\
+	pip.Size = UDim2.fromOffset(10, 10)\
+	pip.BackgroundColor3 = Color3.fromRGB(90, 200, 120)\
+	pip.BorderSizePixel = 0\
+	pip.ZIndex = 16\
+	pip.Visible = false\
+	local corner = Instance.new(\"UICorner\")\
+	corner.CornerRadius = UDim.new(1, 0)\
+	corner.Parent = pip\
+	-- a dark ring so it reads on any icon colour\
+	local ring = Instance.new(\"UIStroke\")\
+	ring.Color = Color3.fromRGB(18, 18, 21)\
+	ring.Thickness = 2\
+	ring.Parent = pip\
+	pip.Parent = iconSpot\
+\
+	local handle = {}\
+\
+	--- show the pip in the given colour (Color3 or a hex string), or hide it\
+	--- when `color` is nil.\
+	function handle.set(color: (Color3 | string)?)\
+		if color == nil then\
+			pip.Visible = false\
+			return\
+		end\
+		pip.BackgroundColor3 = if typeof(color) == \"Color3\"\
+			then color\
+			else Color3.fromHex(color :: string)\
+		pip.Visible = true\
+	end\
+\
+	return handle\
+end\
+"},
+{"Material/Elements/Progress","ModuleScript","--- A thin progress/cooldown bar along the bottom of the icon. Set a fraction\
+--- with [[Icon:setProgress]], or run a timed sweep with [[Icon:cooldown]]\
+--- (fills full then drains to empty over N seconds — ability cooldowns).\
+--- @section Elements\
+--- @client\
+\
+local TweenService = game:GetService(\"TweenService\")\
+\
+local root = script.Parent.Parent\
+local Skin = require(root.Skin)\
+\
+return function(icon: any)\
+	local iconSpot = icon:getInstance(\"IconSpot\")\
+\
+	local track = Instance.new(\"Frame\")\
+	track.Name = \"ProgressTrack\"\
+	track.AnchorPoint = Vector2.new(0.5, 1)\
+	track.Position = UDim2.new(0.5, 0, 1, -4)\
+	track.Size = UDim2.new(1, -12, 0, 4)\
+	track.BackgroundColor3 = Color3.fromRGB(0, 0, 0)\
+	track.BackgroundTransparency = 0.5\
+	track.BorderSizePixel = 0\
+	track.ZIndex = 12\
+	track.Visible = false\
+	local trackCorner = Instance.new(\"UICorner\")\
+	trackCorner.CornerRadius = UDim.new(1, 0)\
+	trackCorner.Parent = track\
+\
+	local fill = Instance.new(\"Frame\")\
+	fill.Name = \"ProgressFill\"\
+	fill.AnchorPoint = Vector2.new(0, 0.5)\
+	fill.Position = UDim2.fromScale(0, 0.5)\
+	fill.Size = UDim2.fromScale(0, 1)\
+	fill.BackgroundColor3 = Skin.Accent\
+	fill.BorderSizePixel = 0\
+	local fillCorner = Instance.new(\"UICorner\")\
+	fillCorner.CornerRadius = UDim.new(1, 0)\
+	fillCorner.Parent = fill\
+	fill.Parent = track\
+	track.Parent = iconSpot\
+\
+	local progress = {}\
+\
+	--- set the bar to a 0..1 fraction (tweened). 0 hides it.\
+	function progress.set(alpha: number)\
+		alpha = math.clamp(alpha, 0, 1)\
+		track.Visible = true\
+		TweenService:Create(fill, TweenInfo.new(0.15, Enum.EasingStyle.Quad), {\
+			Size = UDim2.fromScale(alpha, 1),\
+		}):Play()\
+		if alpha <= 0 then\
+			task.delay(0.2, function()\
+				if fill.Size.X.Scale <= 0 then\
+					track.Visible = false\
+				end\
+			end)\
+		end\
+	end\
+\
+	--- fill full, then drain to empty over `seconds` (a cooldown wipe).\
+	function progress.cooldown(seconds: number)\
+		track.Visible = true\
+		fill.Size = UDim2.fromScale(1, 1)\
+		fill.BackgroundColor3 = Skin.Accent\
+		local tween = TweenService:Create(fill, TweenInfo.new(seconds, Enum.EasingStyle.Linear), {\
+			Size = UDim2.fromScale(0, 1),\
+		})\
+		tween:Play()\
+		tween.Completed:Once(function(state)\
+			if state == Enum.PlaybackState.Completed then\
+				track.Visible = false\
+			end\
+		end)\
+	end\
+\
+	return progress\
+end\
+"},
+{"Material/Elements/Ripple","ModuleScript","--- A Material-style ripple: a circle that expands from the press point across\
+--- the icon when it's clicked or tapped, then fades. Contained by the icon\
+--- button, so it reads as part of the icon. Toggle with [[Icon:setRipple]].\
+--- @section Elements\
+--- @client\
+\
+local TweenService = game:GetService(\"TweenService\")\
+\
+local RIPPLE = TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)\
+\
+return function(icon: any)\
+	local clickRegion = icon:getInstance(\"ClickRegion\")\
+	local iconSpot = icon:getInstance(\"IconSpot\")\
+\
+	icon.janitor:add(clickRegion.InputBegan:Connect(function(input)\
+		if icon.rippleEnabled == false or icon.locked then\
+			return\
+		end\
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1\
+			and input.UserInputType ~= Enum.UserInputType.Touch then\
+			return\
+		end\
+		local absPos = iconSpot.AbsolutePosition\
+		local absSize = iconSpot.AbsoluteSize\
+		local circle = Instance.new(\"Frame\")\
+		circle.Name = \"Ripple\"\
+		circle.AnchorPoint = Vector2.new(0.5, 0.5)\
+		circle.Position = UDim2.fromOffset(input.Position.X - absPos.X, input.Position.Y - absPos.Y)\
+		circle.Size = UDim2.fromOffset(0, 0)\
+		circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)\
+		circle.BackgroundTransparency = 0.72\
+		circle.BorderSizePixel = 0\
+		circle.ZIndex = 12\
+		local corner = Instance.new(\"UICorner\")\
+		corner.CornerRadius = UDim.new(1, 0)\
+		corner.Parent = circle\
+		circle.Parent = iconSpot\
+\
+		local reach = math.max(absSize.X, absSize.Y) * 2.2\
+		local tween = TweenService:Create(circle, RIPPLE, {\
+			Size = UDim2.fromOffset(reach, reach),\
+			BackgroundTransparency = 1,\
+		})\
+		tween:Play()\
+		tween.Completed:Once(function()\
+			circle:Destroy()\
+		end)\
+	end))\
+\
+	return {}\
+end\
+"},
 {"Material/Elements/Selection","ModuleScript","--- The gamepad selection highlight: the animated gradient frame shown around\
 --- the icon the controller cursor is over.\
 --- @section Elements\
@@ -2824,6 +3123,66 @@ return function(Icon)\
 	return selectionContainer\
 	\
 end"},
+{"Material/Elements/Shine","ModuleScript","--- A light glint that periodically sweeps across the icon to say \"new\" or\
+--- \"shiny\". Contained by the icon button. Toggle with [[Icon:setShine]].\
+--- @section Elements\
+--- @client\
+\
+local TweenService = game:GetService(\"TweenService\")\
+\
+local SWEEP = TweenInfo.new(0.55, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)\
+\
+return function(icon: any)\
+	local iconSpot = icon:getInstance(\"IconSpot\")\
+\
+	local streak = Instance.new(\"Frame\")\
+	streak.Name = \"Shine\"\
+	streak.AnchorPoint = Vector2.new(0.5, 0.5)\
+	streak.Position = UDim2.new(-0.3, 0, 0.5, 0)\
+	streak.Size = UDim2.new(0, 14, 2, 0)\
+	streak.Rotation = 18\
+	streak.BackgroundColor3 = Color3.fromRGB(255, 255, 255)\
+	streak.BorderSizePixel = 0\
+	streak.ZIndex = 13\
+	streak.Visible = false\
+	local gradient = Instance.new(\"UIGradient\")\
+	gradient.Transparency = NumberSequence.new({\
+		NumberSequenceKeypoint.new(0, 1),\
+		NumberSequenceKeypoint.new(0.5, 0.45),\
+		NumberSequenceKeypoint.new(1, 1),\
+	})\
+	gradient.Rotation = 90\
+	gradient.Parent = streak\
+	streak.Parent = iconSpot\
+\
+	local enabled = false\
+	local running = false\
+	local function loop()\
+		if running then\
+			return\
+		end\
+		running = true\
+		while enabled do\
+			streak.Position = UDim2.new(-0.3, 0, 0.5, 0)\
+			streak.Visible = true\
+			TweenService:Create(streak, SWEEP, { Position = UDim2.new(1.3, 0, 0.5, 0) }):Play()\
+			task.wait(0.55)\
+			streak.Visible = false\
+			task.wait(2.6)\
+		end\
+		running = false\
+	end\
+\
+	local handle = {}\
+	function handle.set(bool: boolean)\
+		enabled = bool\
+		if bool then\
+			task.spawn(loop)\
+		end\
+	end\
+	return handle\
+end\
+"},
 {"Material/Elements/Widget","ModuleScript","--- The icon's physical GuiObject tree: the button, image, label, spot, and\
 --- click region, plus the automatic resizing logic that grows and shrinks the\
 --- widget as labels change and images show or hide. Built once per icon by\
@@ -6144,6 +6503,38 @@ type Methods = {\
 		function(self: Icon, childIcon: Icon): Icon\
 			return nil :: any\
 		end\
+	),\
+	setRipple: typeof(\
+		--[[ Enables (default) or disables the click ripple on this icon. ]]\
+		function(self: Icon, enabled: boolean): Icon return nil :: any end\
+	),\
+	pulse: typeof(\
+		--[[ Plays a quick attention pulse (grow-and-settle) on the icon. ]]\
+		function(self: Icon): Icon return nil :: any end\
+	),\
+	bounce: typeof(\
+		--[[ Plays a springy bounce on the icon. ]]\
+		function(self: Icon): Icon return nil :: any end\
+	),\
+	wobble: typeof(\
+		--[[ Plays a quick rotational wobble on the icon. ]]\
+		function(self: Icon): Icon return nil :: any end\
+	),\
+	setProgress: typeof(\
+		--[[ Sets the icon's progress bar to a 0..1 fraction (0 hides it). ]]\
+		function(self: Icon, alpha: number): Icon return nil :: any end\
+	),\
+	cooldown: typeof(\
+		--[[ Runs a cooldown wipe: the bar fills, then drains over `seconds`. ]]\
+		function(self: Icon, seconds: number): Icon return nil :: any end\
+	),\
+	setPip: typeof(\
+		--[[ Shows a corner status dot in the given colour (Color3 or hex), or hides it when nil. ]]\
+		function(self: Icon, color: (Color3 | string)?): Icon return nil :: any end\
+	),\
+	setShine: typeof(\
+		--[[ Turns a periodic shine sweep on or off. ]]\
+		function(self: Icon, enabled: boolean): Icon return nil :: any end\
 	),\
 	destroy: typeof(\
 		--[[\

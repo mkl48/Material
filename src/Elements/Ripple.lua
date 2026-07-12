@@ -1,0 +1,51 @@
+--- A Material-style ripple: a circle that expands from the press point across
+--- the icon when it's clicked or tapped, then fades. Contained by the icon
+--- button, so it reads as part of the icon. Toggle with [[Icon:setRipple]].
+--- @section Elements
+--- @client
+
+local TweenService = game:GetService("TweenService")
+
+local RIPPLE = TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+return function(icon: any)
+	local clickRegion = icon:getInstance("ClickRegion")
+	local iconSpot = icon:getInstance("IconSpot")
+
+	icon.janitor:add(clickRegion.InputBegan:Connect(function(input)
+		if icon.rippleEnabled == false or icon.locked then
+			return
+		end
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1
+			and input.UserInputType ~= Enum.UserInputType.Touch then
+			return
+		end
+		local absPos = iconSpot.AbsolutePosition
+		local absSize = iconSpot.AbsoluteSize
+		local circle = Instance.new("Frame")
+		circle.Name = "Ripple"
+		circle.AnchorPoint = Vector2.new(0.5, 0.5)
+		circle.Position = UDim2.fromOffset(input.Position.X - absPos.X, input.Position.Y - absPos.Y)
+		circle.Size = UDim2.fromOffset(0, 0)
+		circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		circle.BackgroundTransparency = 0.72
+		circle.BorderSizePixel = 0
+		circle.ZIndex = 12
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(1, 0)
+		corner.Parent = circle
+		circle.Parent = iconSpot
+
+		local reach = math.max(absSize.X, absSize.Y) * 2.2
+		local tween = TweenService:Create(circle, RIPPLE, {
+			Size = UDim2.fromOffset(reach, reach),
+			BackgroundTransparency = 1,
+		})
+		tween:Play()
+		tween.Completed:Once(function()
+			circle:Destroy()
+		end)
+	end))
+
+	return {}
+end

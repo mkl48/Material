@@ -1134,6 +1134,77 @@ function Icon:addWindowIcon(childIcon)
 	return self
 end
 
+--- Enables (default) or disables the click ripple on this icon.
+function Icon:setRipple(bool)
+	if not self.rippleElement then
+		self.rippleElement = require(iconModule.Elements.Ripple)(self)
+	end
+	self.rippleEnabled = bool ~= false
+	return self
+end
+
+function Icon:_motion()
+	if not self.motionElement then
+		self.motionElement = require(iconModule.Elements.Motion)(self)
+	end
+	return self.motionElement
+end
+
+--- Plays a quick pulse (a grow-and-settle) to draw attention to the icon.
+function Icon:pulse()
+	self:_motion().pulse()
+	return self
+end
+
+--- Plays a springy bounce on the icon.
+function Icon:bounce()
+	self:_motion().bounce()
+	return self
+end
+
+--- Plays a quick rotational wobble on the icon.
+function Icon:wobble()
+	self:_motion().wobble()
+	return self
+end
+
+--- Sets the icon's progress bar to a 0..1 fraction (0 hides it).
+function Icon:setProgress(alpha)
+	if not self.progressElement then
+		self.progressElement = require(iconModule.Elements.Progress)(self)
+	end
+	self.progressElement.set(alpha)
+	return self
+end
+
+--- Runs a cooldown wipe: the progress bar fills, then drains over `seconds`.
+function Icon:cooldown(seconds)
+	if not self.progressElement then
+		self.progressElement = require(iconModule.Elements.Progress)(self)
+	end
+	self.progressElement.cooldown(seconds)
+	return self
+end
+
+--- Shows a status pip (a small corner dot) in the given colour (Color3 or a
+--- hex string), or hides it when `color` is nil.
+function Icon:setPip(color)
+	if not self.pipElement then
+		self.pipElement = require(iconModule.Elements.Pip)(self)
+	end
+	self.pipElement.set(color)
+	return self
+end
+
+--- Turns a periodic shine sweep on or off.
+function Icon:setShine(bool)
+	if not self.shineElement then
+		self.shineElement = require(iconModule.Elements.Shine)(self)
+	end
+	self.shineElement.set(bool)
+	return self
+end
+
 --- Blocks all user input on the icon (clicks, touches, toggle keys). Undo
 --- with [[Icon:unlock]].
 function Icon:lock()

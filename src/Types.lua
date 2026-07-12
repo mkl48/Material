@@ -525,6 +525,38 @@ type Methods = {
 			return nil :: any
 		end
 	),
+	setRipple: typeof(
+		--[[ Enables (default) or disables the click ripple on this icon. ]]
+		function(self: Icon, enabled: boolean): Icon return nil :: any end
+	),
+	pulse: typeof(
+		--[[ Plays a quick attention pulse (grow-and-settle) on the icon. ]]
+		function(self: Icon): Icon return nil :: any end
+	),
+	bounce: typeof(
+		--[[ Plays a springy bounce on the icon. ]]
+		function(self: Icon): Icon return nil :: any end
+	),
+	wobble: typeof(
+		--[[ Plays a quick rotational wobble on the icon. ]]
+		function(self: Icon): Icon return nil :: any end
+	),
+	setProgress: typeof(
+		--[[ Sets the icon's progress bar to a 0..1 fraction (0 hides it). ]]
+		function(self: Icon, alpha: number): Icon return nil :: any end
+	),
+	cooldown: typeof(
+		--[[ Runs a cooldown wipe: the bar fills, then drains over `seconds`. ]]
+		function(self: Icon, seconds: number): Icon return nil :: any end
+	),
+	setPip: typeof(
+		--[[ Shows a corner status dot in the given colour (Color3 or hex), or hides it when nil. ]]
+		function(self: Icon, color: (Color3 | string)?): Icon return nil :: any end
+	),
+	setShine: typeof(
+		--[[ Turns a periodic shine sweep on or off. ]]
+		function(self: Icon, enabled: boolean): Icon return nil :: any end
+	),
 	destroy: typeof(
 		--[[
 			Clears all connections and destroys all instances associated with the icon.
