@@ -70,22 +70,22 @@ function Tooltip.attach(guiObject: GuiObject, text: string): () -> ()
 		local frame = UI.new("Frame", {
 			Name = "Tooltip",
 			AutomaticSize = Enum.AutomaticSize.XY,
-			BackgroundColor3 = Skin.Header,
+			BackgroundColor3 = Skin.Panel,
 			BackgroundTransparency = 1,
 			Parent = getLayer(),
 		}, {
 			UI.corner(UDim.new(0, 6)),
-			UI.stroke(Skin.Stroke, 1, 0.3),
+			UI.stroke(Skin.Stroke, 1, 0.85),
 			UI.padding(8),
 		})
 		UI.new("TextLabel", {
 			Name = "Text",
 			AutomaticSize = Enum.AutomaticSize.XY,
 			BackgroundTransparency = 1,
-			Font = Skin.Font,
+			FontFace = Skin.FontFace,
 			Text = text,
 			TextColor3 = Skin.Text,
-			TextSize = 13,
+			TextSize = 14,
 			Parent = frame,
 		})
 		bubble = frame

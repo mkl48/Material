@@ -78,8 +78,6 @@ local Types = require(script.Types)\
 export type Icon = Types.Icon\
 export type IconState = Types.IconState\
 export type Window = Types.Window\
-export type WindowController = Types.WindowController\
-export type Dock = Types.Dock\
 export type Toast = Types.Toast\
 export type ToastOptions = Types.ToastOptions\
 export type Dialog = Types.Dialog\
@@ -145,11 +143,9 @@ Icon.iconAdded = Signal.new()\
 Icon.iconRemoved = Signal.new()\
 Icon.iconChanged = Signal.new()\
 \
--- Emulator subsystems: windows and overlays (Material's additions over\
--- TopbarPlus). Exposed as Material.Window, Material.Toast, etc.\
+-- Panels + overlays (Material's additions over TopbarPlus), themed to match\
+-- the icons. Exposed as Material.Window, Material.Toast, etc.\
 Icon.Window = require(iconModule.Windows.Window)\
-Icon.WindowController = require(iconModule.Windows.WindowController)\
-Icon.Dock = require(iconModule.Windows.Dock)\
 Icon.Toast = require(iconModule.Overlays.Toast)\
 Icon.Dialog = require(iconModule.Overlays.Dialog)\
 Icon.Tooltip = require(iconModule.Overlays.Tooltip)\
@@ -1107,15 +1103,16 @@ function Icon:addToJanitor(callback, methodName, index)\
 	return self\
 end\
 \
---- Creates a [[Window]], binds it to this icon (the shop-button pattern), and\
---- returns the window so you can populate it. This is the preferred way to give\
---- an icon a window — no separate `Material.Window.new()` needed.\
+--- Gives this icon a [[Window]] — a Roblox-style panel that opens when the icon\
+--- is selected and closes when it's deselected. Returns the window so you can\
+--- populate it (`:adopt`, `:getBody`, `:setModal`, …). The panel is themed to\
+--- match the topbar, and its close button is a real icon.\
 ---\
---- @param config optional `{ title, icon, width, height, modal, resizable }`\
---- @return the created Window (already bound; call `:adopt()` / `:getBody()` on it)\
+--- @param config optional `{ title, icon, width, height, dock, modal }`\
+--- @return the created Window (already wired to this icon)\
 function Icon:setWindow(config)\
-	local window = Icon.Window.new()\
 	config = config or {}\
+	local window = Icon.Window.new(self)\
 	if config.title then\
 		window:setTitle(config.title)\
 	end\
@@ -1125,45 +1122,19 @@ function Icon:setWindow(config)\
 	if config.width or config.height then\
 		window:setSize(config.width or 480, config.height or 320)\
 	end\
+	if config.dock then\
+		window:setDock(config.dock)\
+	end\
 	if config.modal ~= nil then\
 		window:setModal(config.modal)\
 	end\
-	if config.resizable ~= nil then\
-		window:setResizable(config.resizable)\
-	end\
-	window:center()\
-	self:bindWindow(window)\
+	self.boundWindow = window\
 	return window\
 end\
 \
---- Returns the [[Window]] bound to this icon (via `setWindow`/`bindWindow`), or nil.\
+--- Returns the [[Window]] created for this icon by [[Icon:setWindow]], or nil.\
 function Icon:getWindow()\
 	return self.boundWindow\
-end\
-\
---- Binds an existing [[Window]] to this icon: selecting the icon opens the\
---- window, deselecting closes it, and the window closing deselects the icon.\
---- Prefer [[Icon:setWindow]] when creating a new window for the icon.\
---- @param window a [[Window]] created with `Material.Window.new()`\
-function Icon:bindWindow(window)\
-	self.boundWindow = window\
-	self.janitor:add(self.selected:Connect(function()\
-		window:open()\
-	end))\
-	self.janitor:add(self.deselected:Connect(function()\
-		window:close()\
-	end))\
-	self.janitor:add(window.opened:Connect(function()\
-		if not self.isSelected then\
-			self:select(\"BoundWindow\", self)\
-		end\
-	end))\
-	self.janitor:add(window.closed:Connect(function()\
-		if self.isSelected then\
-			self:deselect(\"BoundWindow\", self)\
-		end\
-	end))\
-	return self\
 end\
 \
 --- Blocks all user input on the icon (clicks, touches, toggle keys). Undo\
@@ -4354,15 +4325,15 @@ export type Button = Types.DialogButton\
 export type Options = Types.DialogOptions\
 \
 --- Shows a modal dialog and returns its [[Window]] (already open). Headerless\
---- and centered, like Roblox's respawn/confirm modals.\
+--- and centered, like Roblox's respawn/confirm modals. The buttons are real\
+--- [[Icon]]s so they match the theme.\
 function Dialog.show(options: Options): any\
+	local Icon = require(root) :: any  -- lazy: the Material module (avoids a load cycle)\
 	local width = options.width or 460\
-	local window = Window.new()\
+	local window = Window.new()   -- no owner: a free-standing modal\
 		:setSize(width, 240)\
-		:setResizable(false)\
 		:setModal(true, options.dismissable ~= false)\
 		:setHeaderVisible(false)\
-	window:center()\
 \
 	local body = window:getBody()\
 	UI.new(\"UIPadding\", {\
@@ -4371,14 +4342,14 @@ function Dialog.show(options: Options): any\
 		Parent = body,\
 	})\
 \
-	-- title / message, centered in the upper area (Roblox modal style)\
+	-- title / message, centered in the upper area\
 	UI.new(\"TextLabel\", {\
 		Name = \"Message\",\
 		AnchorPoint = Vector2.new(0.5, 0),\
 		Position = UDim2.fromScale(0.5, 0),\
 		Size = UDim2.new(1, 0, 1, -64),\
 		BackgroundTransparency = 1,\
-		Font = Skin.TitleFont,\
+		FontFace = Skin.TitleFontFace,\
 		Text = options.message,\
 		TextColor3 = Skin.Text,\
 		TextSize = 20,\
@@ -4388,7 +4359,7 @@ function Dialog.show(options: Options): any\
 		Parent = body,\
 	})\
 \
-	-- buttons, centered along the bottom\
+	-- buttons, centered along the bottom, each a real Icon\
 	local buttonRow = UI.new(\"Frame\", {\
 		Name = \"Buttons\",\
 		AnchorPoint = Vector2.new(0.5, 1),\
@@ -4403,26 +4374,42 @@ function Dialog.show(options: Options): any\
 \
 	local buttons = options.buttons or { { text = \"OK\", primary = true } }\
 	for index, spec in buttons do\
-		local fill = if spec.danger then Skin.Danger elseif spec.primary then Skin.Accent else Skin.SurfaceRaised\
-		local button = UI.new(\"TextButton\", {\
-			Name = \"DialogButton\",\
+		local fill = if spec.danger then Skin.Danger elseif spec.primary then Skin.Accent else Skin.Panel\
+		-- a holder the button Icon's widget sits in (gives us the selection ring)\
+		local holder = UI.new(\"Frame\", {\
+			Name = \"ButtonHolder\",\
 			Size = UDim2.fromOffset(150, 46),\
-			BackgroundColor3 = fill,\
-			AutoButtonColor = true,\
-			Text = spec.text,\
-			Font = Skin.TitleFont,\
-			TextColor3 = Color3.new(1, 1, 1),\
-			TextSize = 16,\
+			BackgroundTransparency = 1,\
 			LayoutOrder = index,\
 			Parent = buttonRow,\
-		}, { UI.corner(UDim.new(0, 10)) })\
-		-- primary/danger get a white selection ring; others a faint outline\
-		if spec.primary or spec.danger then\
-			UI.new(\"UIStroke\", { Color = Color3.new(1, 1, 1), Thickness = 2, Parent = button })\
-		else\
-			UI.new(\"UIStroke\", { Color = Skin.Stroke, Thickness = 1, Transparency = 0.7, Parent = button })\
-		end\
-		button.Activated:Connect(function()\
+		}, {\
+			UI.corner(UDim.new(0, 10)),\
+			UI.stroke(\
+				if spec.primary or spec.danger then Color3.new(1, 1, 1) else Skin.Stroke,\
+				if spec.primary or spec.danger then 2 else 1,\
+				if spec.primary or spec.danger then 0 else 0.7\
+			),\
+		})\
+		local btn = Icon.new()\
+		btn:modifyTheme({\
+			{ \"IconLabel\", \"Text\", spec.text, \"Deselected\" },\
+			{ \"IconLabel\", \"Text\", spec.text, \"Selected\" },\
+			{ \"IconLabel\", \"FontFace\", Skin.TitleFontFace },\
+			{ \"IconLabel\", \"TextSize\", 16 },\
+			{ \"IconLabel\", \"TextColor3\", Color3.new(1, 1, 1) },\
+			{ \"IconImage\", \"Image\", \"\" },\
+			{ \"Widget\", \"MinimumWidth\", 150 },\
+			{ \"Widget\", \"MinimumHeight\", 46 },\
+			{ \"IconButton\", \"BackgroundColor3\", fill, \"Deselected\" },\
+			{ \"IconButton\", \"BackgroundColor3\", fill, \"Selected\" },\
+			{ \"IconButton\", \"BackgroundTransparency\", 0, \"Deselected\" },\
+			{ \"IconCorners\", \"CornerRadius\", UDim.new(0, 10) },\
+		})\
+		btn:oneClick(true)\
+		btn:autoDeselect(false)  -- don't deselect the user's topbar icons\
+		btn.widget.Parent = holder\
+		btn.widget.Position = UDim2.fromScale(0, 0)\
+		btn.selected:Connect(function()\
 			if spec.onClick then\
 				spec.onClick()\
 			end\
@@ -4521,7 +4508,7 @@ function Toast.show(text: string, options: Options?): () -> ()\
 		Name = \"Toast\",\
 		Size = UDim2.new(1, 0, 0, 0),\
 		AutomaticSize = Enum.AutomaticSize.Y,\
-		BackgroundColor3 = Skin.Header,\
+		BackgroundColor3 = Skin.Panel,\
 		BackgroundTransparency = 1,\
 		Parent = stack,\
 	}, {\
@@ -4552,10 +4539,10 @@ function Toast.show(text: string, options: Options?): () -> ()\
 		Size = UDim2.new(1, -textInset, 0, 0),\
 		AutomaticSize = Enum.AutomaticSize.Y,\
 		BackgroundTransparency = 1,\
-		Font = Skin.Font,\
+		FontFace = Skin.FontFace,\
 		Text = text,\
 		TextColor3 = Skin.Text,\
-		TextSize = 14,\
+		TextSize = 15,\
 		TextWrapped = true,\
 		TextXAlignment = Enum.TextXAlignment.Left,\
 		LayoutOrder = 1,\
@@ -4589,9 +4576,9 @@ function Toast.show(text: string, options: Options?): () -> ()\
 			BackgroundColor3 = opts.color or Skin.Accent,\
 			AutoButtonColor = true,\
 			Text = opts.action,\
-			Font = Enum.Font.GothamBold,\
+			FontFace = Skin.TitleFontFace,\
 			TextColor3 = Color3.new(1, 1, 1),\
-			TextSize = 13,\
+			TextSize = 14,\
 			LayoutOrder = 2,\
 			Parent = toast,\
 		}, { UI.corner(UDim.new(0, 6)) })\
@@ -4688,22 +4675,22 @@ function Tooltip.attach(guiObject: GuiObject, text: string): () -> ()\
 		local frame = UI.new(\"Frame\", {\
 			Name = \"Tooltip\",\
 			AutomaticSize = Enum.AutomaticSize.XY,\
-			BackgroundColor3 = Skin.Header,\
+			BackgroundColor3 = Skin.Panel,\
 			BackgroundTransparency = 1,\
 			Parent = getLayer(),\
 		}, {\
 			UI.corner(UDim.new(0, 6)),\
-			UI.stroke(Skin.Stroke, 1, 0.3),\
+			UI.stroke(Skin.Stroke, 1, 0.85),\
 			UI.padding(8),\
 		})\
 		UI.new(\"TextLabel\", {\
 			Name = \"Text\",\
 			AutomaticSize = Enum.AutomaticSize.XY,\
 			BackgroundTransparency = 1,\
-			Font = Skin.Font,\
+			FontFace = Skin.FontFace,\
 			Text = text,\
 			TextColor3 = Skin.Text,\
-			TextSize = 13,\
+			TextSize = 14,\
 			Parent = frame,\
 		})\
 		bubble = frame\
@@ -5279,59 +5266,50 @@ function Reference.getObject()\
 end\
 \
 return Reference"},
-{"Material/Skin","ModuleScript","--- The shared visual language for Material's windows and overlays — a dark,\
---- rounded palette emulating Roblox's in-experience core UI (the store /\
---- quick-access window look). One table so every surface matches; swap it to\
---- reskin the whole emulator at once.\
+{"Material/Skin","ModuleScript","--- The shared visual constants for Material's windows and overlays, taken\
+--- straight from TopbarPlus's own theme so they match the icons: the panel\
+--- colour is the icon/dropdown colour (`18,18,21`), the font is **BuilderSans**\
+--- (Roblox's core-UI font), and the drop shadow is the shared TB+ asset. Panels\
+--- built from these read as part of the same topbar, not a separate UI.\
 --- @section Support\
 --- @client\
 \
 export type Skin = {\
 	Backdrop: Color3,\
-	Surface: Color3,\
-	SurfaceTop: Color3,\
-	SurfaceBottom: Color3,\
-	SurfaceRaised: Color3,\
-	Header: Color3,\
-	Stroke: Color3,\
-	StrokeTransparency: number,\
+	Panel: Color3,\
 	Divider: Color3,\
 	Text: Color3,\
 	TextMuted: Color3,\
 	Accent: Color3,\
-	Info: Color3,\
 	Danger: Color3,\
+	Stroke: Color3,\
+	StrokeTransparency: number,\
 	CornerRadius: UDim,\
 	ButtonRadius: UDim,\
 	HeaderHeight: number,\
-	Font: Enum.Font,\
-	TitleFont: Enum.Font,\
-	Shadow: Color3,\
+	FontFace: Font,\
+	TitleFontFace: Font,\
+	ShadowImage: string,\
 }\
 \
--- Tuned to Roblox's in-experience core UI (the store / quick-access panels):\
--- near-black headers, a subtly graded dark body, Roblox blue, thin controls.\
+local BUILDER = \"rbxasset://fonts/families/BuilderSans.json\"\
+\
 local Skin: Skin = {\
-	Backdrop = Color3.fromRGB(0, 0, 0),          -- dim behind modal windows\
-	Surface = Color3.fromRGB(24, 26, 31),        -- body base (solid fallback)\
-	SurfaceTop = Color3.fromRGB(31, 34, 40),     -- body gradient, top\
-	SurfaceBottom = Color3.fromRGB(14, 15, 19),  -- body gradient, bottom\
-	SurfaceRaised = Color3.fromRGB(38, 41, 48),  -- inputs, dock buttons\
-	Header = Color3.fromRGB(13, 13, 16),         -- near-black title bar\
-	Stroke = Color3.fromRGB(255, 255, 255),      -- border, used at StrokeTransparency\
-	StrokeTransparency = 0.9,\
-	Divider = Color3.fromRGB(40, 43, 50),        -- header/body separator\
+	Backdrop = Color3.fromRGB(0, 0, 0),            -- dim behind modal panels\
+	Panel = Color3.fromRGB(18, 18, 21),            -- == IconButton/Dropdown colour\
+	Divider = Color3.fromRGB(255, 255, 255),       -- used at high transparency\
 	Text = Color3.fromRGB(255, 255, 255),\
-	TextMuted = Color3.fromRGB(162, 166, 176),\
-	Accent = Color3.fromRGB(51, 95, 255),        -- Roblox blue (#335FFF)\
-	Info = Color3.fromRGB(80, 128, 240),         -- the shop info-banner blue\
+	TextMuted = Color3.fromRGB(189, 190, 190),     -- TB+ caption secondary text\
+	Accent = Color3.fromRGB(0, 116, 189),          -- Roblox action blue\
 	Danger = Color3.fromRGB(226, 74, 74),\
+	Stroke = Color3.fromRGB(255, 255, 255),\
+	StrokeTransparency = 0.9,\
 	CornerRadius = UDim.new(0, 12),\
 	ButtonRadius = UDim.new(0, 8),\
 	HeaderHeight = 48,\
-	Font = Enum.Font.GothamMedium,\
-	TitleFont = Enum.Font.GothamBold,\
-	Shadow = Color3.fromRGB(0, 0, 0),\
+	FontFace = Font.new(BUILDER, Enum.FontWeight.Medium, Enum.FontStyle.Normal),\
+	TitleFontFace = Font.new(BUILDER, Enum.FontWeight.Bold, Enum.FontStyle.Normal),\
+	ShadowImage = \"rbxassetid://124920646932671\",  -- shared TB+ caption/dropdown shadow\
 }\
 \
 return Skin\
@@ -5365,34 +5343,23 @@ export type Modification = { any }\
 \
 ---------------------- WINDOWS & OVERLAYS (Material additions) ----------------------\
 \
--- A draggable, resizable window emulating Roblox's in-game core UI.\
+-- A Roblox-style panel owned by an icon: opens on select, closes on deselect.\
 export type Window = {\
 	-- fields\
-	UID: string,\
 	title: string,\
 	isOpen: boolean,\
-	isMinimized: boolean,\
-	isMaximized: boolean,\
 	isModal: boolean,\
+	ownerIcon: any,\
 	root: Frame,\
 	body: Frame,\
 	-- events\
 	opened: Signal,\
 	closed: Signal,\
-	minimized: Signal,\
-	maximized: Signal,\
-	restored: Signal,\
-	focused: Signal,\
-	moved: Signal<number, number>,\
-	resized: Signal<number, number>,\
 	-- methods (chainable)\
 	setTitle: (self: Window, text: string) -> Window,\
 	setIcon: (self: Window, imageId: (number | string)?) -> Window,\
 	setSize: (self: Window, width: number, height: number) -> Window,\
-	setPosition: (self: Window, x: number, y: number) -> Window,\
-	center: (self: Window) -> Window,\
-	setDraggable: (self: Window, enabled: boolean) -> Window,\
-	setResizable: (self: Window, enabled: boolean) -> Window,\
+	setDock: (self: Window, where: \"center\" | \"top\") -> Window,\
 	setHeaderVisible: (self: Window, enabled: boolean) -> Window,\
 	setModal: (self: Window, enabled: boolean, dismissable: boolean?) -> Window,\
 	adopt: (self: Window, guiObject: GuiObject) -> Window,\
@@ -5400,20 +5367,15 @@ export type Window = {\
 	getBody: (self: Window) -> Frame,\
 	open: (self: Window) -> Window,\
 	close: (self: Window) -> Window,\
-	toggle: (self: Window) -> Window,\
-	minimize: (self: Window) -> Window,\
-	maximize: (self: Window) -> Window,\
-	restore: (self: Window) -> Window,\
-	focus: (self: Window) -> Window,\
 	destroy: (self: Window) -> (),\
 }\
 \
 export type StaticWindow = {\
 	new: typeof(\
 		--[[\
-			Constructs a hidden, centered 480x320 window. Call <code>:open()</code> to show it.\
+			Constructs a panel owned by an icon. Prefer icon:setWindow() which calls this.\
 		]]\
-		function(): Window\
+		function(ownerIcon: any?): Window\
 			return (nil :: any) :: Window\
 		end\
 	),\
@@ -5425,36 +5387,8 @@ export type WindowConfig = {\
 	icon: (number | string)?,\
 	width: number?,\
 	height: number?,\
+	dock: (\"center\" | \"top\")?,\
 	modal: boolean?,\
-	resizable: boolean?,\
-}\
-\
--- The singleton that owns the shared window layer, z-order, focus, and dock feed.\
-export type WindowController = {\
-	windows: { [string]: Window },\
-	activeWindow: Window?,\
-	baseDisplayOrder: number,\
-	windowRegistered: Signal<Window>,\
-	windowUnregistered: Signal<Window>,\
-	windowMinimized: Signal<Window>,\
-	windowRestored: Signal<Window>,\
-	activeChanged: Signal,\
-	getLayer: () -> ScreenGui,\
-	getBackdrop: () -> Frame,\
-	register: (window: Window) -> (),\
-	unregister: (window: Window) -> (),\
-	notifyMinimized: (window: Window) -> (),\
-	notifyRestored: (window: Window) -> (),\
-	focus: (window: Window) -> (),\
-	getWindows: () -> { [string]: Window },\
-	closeAll: () -> (),\
-}\
-\
--- An optional taskbar of minimized windows.\
-export type Dock = {\
-	enabled: boolean,\
-	setEnabled: (enabled: boolean) -> Dock,\
-	getInstance: () -> Frame,\
 }\
 \
 export type ToastOptions = {\
@@ -5912,19 +5846,10 @@ type Methods = {\
 	),\
 	getWindow: typeof(\
 		--[[\
-			Returns the Window bound to this icon (via setWindow or bindWindow), or nil.\
+			Returns the Window created for this icon by setWindow, or nil.\
 		]]\
 		function(self: Icon): Window?\
 			return (nil :: any) :: Window?\
-		end\
-	),\
-	bindWindow: typeof(\
-		--[[\
-			Binds an existing Window to this icon: selecting the icon opens the window,\
-			deselecting closes it, and closing the window deselects the icon.\
-		]]\
-		function(self: Icon, window: Window): Icon\
-			return nil :: any\
 		end\
 	),\
 	destroy: typeof(\
@@ -5965,10 +5890,8 @@ export type StaticIcon = {\
 			return (nil :: any) :: Icon\
 		end\
 	),\
-	-- Material's window + overlay subsystem (emulator layer)\
+	-- Material's panels + overlays\
 	Window: StaticWindow,\
-	WindowController: WindowController,\
-	Dock: Dock,\
 	Toast: Toast,\
 	Dialog: Dialog,\
 	Tooltip: Tooltip,\
@@ -6568,263 +6491,147 @@ end\
 \
 return VERSION"},
 {"Material/Windows","Folder",nil},
-{"Material/Windows/Dock","ModuleScript","--- An OS-style taskbar of minimized windows. When a [[Window]] is minimized it\
---- appears here as a button; click it to restore. The dock is fed automatically\
---- by the [[WindowController]] and hides itself when empty.\
+{"Material/Windows/Window","ModuleScript","--- A Roblox-style panel an icon opens — the in-experience store / quick-access\
+--- look. Not a draggable OS window: it belongs to an [[Icon]], opens when that\
+--- icon is selected and closes when it's deselected, and is built from the same\
+--- TopbarPlus theme (panel colour, BuilderSans, shared shadow) so it matches the\
+--- topbar. Its close button is a real [[Icon]].\
 ---\
---- ```lua turn the dock on\
---- Material.Dock.setEnabled(true)   -- off by default\
---- ```\
---- @section Windows\
---- @client\
-\
-local Players = game:GetService(\"Players\")\
-\
-local root = script.Parent.Parent\
-local Types = require(root.Types)\
-local Janitor = require(root.Packages.Janitor)\
-local UI = require(root.UI)\
-local Skin = require(root.Skin)\
-local WindowController = require(script.Parent.WindowController)\
-\
-local Dock = {}\
-Dock.enabled = false\
-\
-local janitor = Janitor.new()\
-local bar: Frame? = nil\
-local buttons: { [string]: TextButton } = {}\
-\
-local function build(): Frame\
-	if bar then\
-		return bar\
-	end\
-	local playerGui = Players.LocalPlayer:WaitForChild(\"PlayerGui\")\
-	local screenGui = UI.new(\"ScreenGui\", {\
-		Name = \"MaterialDock\",\
-		ResetOnSpawn = false,\
-		IgnoreGuiInset = true,\
-		DisplayOrder = WindowController.baseDisplayOrder - 1,\
-		Parent = playerGui,\
-	})\
-	local frame = UI.new(\"Frame\", {\
-		Name = \"Dock\",\
-		AnchorPoint = Vector2.new(0.5, 1),\
-		Position = UDim2.new(0.5, 0, 1, -10),\
-		Size = UDim2.fromOffset(0, 44),\
-		AutomaticSize = Enum.AutomaticSize.X,\
-		BackgroundColor3 = Skin.Header,\
-		BackgroundTransparency = 0.05,\
-		Visible = false,\
-		Parent = screenGui,\
-	}, {\
-		UI.corner(UDim.new(0, 12)),\
-		UI.stroke(Skin.Stroke, 1, 0.3),\
-		UI.padding(6),\
-		UI.list(Enum.FillDirection.Horizontal, 6),\
-	})\
-	bar = frame\
-	return frame\
-end\
-\
-local function refreshVisibility()\
-	if bar then\
-		bar.Visible = next(buttons) ~= nil\
-	end\
-end\
-\
-local function addButton(window: any)\
-	if not Dock.enabled or buttons[window.UID] then\
-		return\
-	end\
-	local frame = build()\
-	local button = UI.new(\"TextButton\", {\
-		Name = \"DockItem\",\
-		Size = UDim2.fromOffset(150, 32),\
-		BackgroundColor3 = Skin.SurfaceRaised,\
-		AutoButtonColor = true,\
-		Text = \"  \" .. window.title,\
-		TextXAlignment = Enum.TextXAlignment.Left,\
-		TextTruncate = Enum.TextTruncate.AtEnd,\
-		Font = Skin.Font,\
-		TextColor3 = Skin.Text,\
-		TextSize = 13,\
-		Parent = frame,\
-	}, { UI.corner(UDim.new(0, 8)) })\
-	button.Activated:Connect(function()\
-		window:restore()\
-	end)\
-	buttons[window.UID] = button\
-	refreshVisibility()\
-end\
-\
-local function removeButton(window: any)\
-	local button = buttons[window.UID]\
-	if button then\
-		button:Destroy()\
-		buttons[window.UID] = nil\
-		refreshVisibility()\
-	end\
-end\
-\
---- Turns the dock on or off. Off by default — enable it if you want minimized\
---- windows to collect in a taskbar rather than just vanishing.\
-function Dock.setEnabled(bool: boolean)\
-	Dock.enabled = bool\
-	if bool then\
-		janitor:add(WindowController.windowMinimized:Connect(addButton))\
-		janitor:add(WindowController.windowRestored:Connect(removeButton))\
-		janitor:add(WindowController.windowUnregistered:Connect(removeButton))\
-	else\
-		janitor:clean()\
-		for uid, button in buttons do\
-			button:Destroy()\
-			buttons[uid] = nil\
-		end\
-		refreshVisibility()\
-	end\
-	return Dock\
-end\
-\
---- Returns the dock's Frame (building it on first call), for custom styling.\
-function Dock.getInstance(): Frame\
-	return build()\
-end\
-\
-return (Dock :: any) :: Types.Dock\
-"},
-{"Material/Windows/Window","ModuleScript","--- A draggable, resizable window emulating Roblox's in-experience core UI (the\
---- store / quick-access panel). Create one, give it a title and size, and drop\
---- content in — either build inside [[Window:getBody]] or [[Window:adopt]] an\
---- existing GuiObject straight off your own ScreenGui.\
+--- Created through [[Icon:setWindow]] rather than directly:\
 ---\
---- Windows manage themselves through the [[WindowController]]: opening\
---- registers and focuses, clicking raises to the front, and closing restores\
---- any adopted content to where it came from. Bind one to a topbar icon with\
---- [[Icon:bindWindow]] for the full shop-button experience.\
----\
---- ```lua a shop window opened from the topbar\
---- -- the preferred path: icon:setWindow creates + binds the window\
+--- ```lua a shop panel opened from the topbar\
 --- local shop = Material.new()\
 ---     :setImage(14723463500)\
 ---     :setCaption(\"Shop\")\
 ---     :setWindow({ title = \"Shop\", width = 560, height = 400 })\
 ---\
 --- shop:adopt(playerGui.ShopGui.Root)   -- reparent your existing UI in\
----\
---- -- or standalone, if the window isn't tied to an icon:\
---- local win = Material.Window.new():setTitle(\"Inventory\"):open()\
 --- ```\
 --- @section Windows\
 --- @client\
 \
-local UserInputService = game:GetService(\"UserInputService\")\
+local Players = game:GetService(\"Players\")\
 local TweenService = game:GetService(\"TweenService\")\
 local Workspace = game:GetService(\"Workspace\")\
 \
 local root = script.Parent.Parent\
 local Types = require(root.Types)\
-local Signal = require(root.Packages.GoodSignal)\
 local Janitor = require(root.Packages.Janitor)\
-local Utility = require(root.Utility)\
 local UI = require(root.UI)\
 local Skin = require(root.Skin)\
-local WindowController = require(script.Parent.WindowController)\
 \
 export type Window = Types.Window\
 \
-local MIN_WIDTH = 220\
-local MIN_HEIGHT = 140\
-local OPEN_TWEEN = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)\
+local OPEN_TWEEN = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)\
 \
 local Window = {}\
 Window.__index = Window\
+\
+local layer: ScreenGui? = nil\
+local backdrop: Frame? = nil\
+\
+local function getLayer(): (ScreenGui, Frame)\
+	if layer then\
+		return layer, backdrop :: Frame\
+	end\
+	local playerGui = Players.LocalPlayer:WaitForChild(\"PlayerGui\")\
+	local screenGui = UI.new(\"ScreenGui\", {\
+		Name = \"MaterialWindows\",\
+		ResetOnSpawn = false,\
+		IgnoreGuiInset = true,\
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,\
+		DisplayOrder = 50,\
+		Parent = playerGui,\
+	}) :: ScreenGui\
+	backdrop = UI.new(\"Frame\", {\
+		Name = \"Backdrop\",\
+		Size = UDim2.fromScale(1, 1),\
+		BackgroundColor3 = Skin.Backdrop,\
+		BackgroundTransparency = 1,\
+		Visible = false,\
+		ZIndex = 0,\
+		Parent = screenGui,\
+	}) :: Frame\
+	layer = screenGui\
+	return screenGui, backdrop :: Frame\
+end\
 \
 local function viewport(): Vector2\
 	local camera = Workspace.CurrentCamera\
 	return if camera then camera.ViewportSize else Vector2.new(1280, 720)\
 end\
 \
--- the eight resize grips: name -> {dirX, dirY} where -1/0/1 pick which edge\
-local HANDLES = {\
-	N = { 0, -1 }, S = { 0, 1 }, E = { 1, 0 }, W = { -1, 0 },\
-	NE = { 1, -1 }, NW = { -1, -1 }, SE = { 1, 1 }, SW = { -1, 1 },\
-}\
-\
---- Creates a window (hidden until [[Window:open]]): centered, default size\
---- 480×320, draggable, resizable, with a title bar carrying minimize,\
---- maximize, and close controls.\
-function Window.new()\
+--- Creates a panel. With an `ownerIcon` it opens/closes with that icon (the\
+--- [[Icon:setWindow]] path); without one it's a free-standing modal you open and\
+--- close yourself (used by [[Dialog]]).\
+function Window.new(ownerIcon: any?)\
 	local self = setmetatable({}, Window)\
-	local janitor = Janitor.new()\
-	self.janitor = janitor\
-	self.UID = Utility.generateUID()\
-	self.title = \"Window\"\
+	self.janitor = Janitor.new()\
+	self.ownerIcon = ownerIcon\
+	self.title = \"\"\
 	self.isOpen = false\
-	self.isMinimized = false\
-	self.isMaximized = false\
 	self.isModal = false\
 	self.dismissable = true\
-	self.draggable = true\
-	self.resizable = true\
-	self._z = 0\
-	self._adopted = {}          -- [instance] = { parent, position, size }\
-	self._restoreRect = nil     -- pre-maximize {position, size}\
+	self.headerVisible = true\
+	self._size = Vector2.new(480, 320)\
+	self._dock = \"center\"\
+	self._adopted = {}\
 \
-	-- signals\
-	self.opened = janitor:add(Signal.new())\
-	self.closed = janitor:add(Signal.new())\
-	self.minimized = janitor:add(Signal.new())\
-	self.maximized = janitor:add(Signal.new())\
-	self.restored = janitor:add(Signal.new())\
-	self.focused = janitor:add(Signal.new())\
-	self.moved = janitor:add(Signal.new())\
-	self.resized = janitor:add(Signal.new())\
+	self.opened = self.janitor:add(require(root.Packages.GoodSignal).new())\
+	self.closed = self.janitor:add(require(root.Packages.GoodSignal).new())\
 \
 	self:_build()\
-	janitor:add(function()\
+\
+	-- when owned by an icon, open/close follow its selection\
+	if ownerIcon then\
+		self.janitor:add(ownerIcon.selected:Connect(function()\
+			self:open()\
+		end))\
+		self.janitor:add(ownerIcon.deselected:Connect(function()\
+			self:close()\
+		end))\
+	end\
+	self.janitor:add(function()\
 		self:release()\
-		WindowController.unregister(self)\
+		if self.root then\
+			self.root:Destroy()\
+		end\
 	end)\
 	return self\
 end\
 \
 function Window:_build()\
-	local size = Vector2.new(480, 320)\
-	local vp = viewport()\
-	local pos = (vp - size) / 2\
+	local screenGui = getLayer()\
 \
-	-- root is a transparent geometry frame (moves/resizes). The shadow sits\
-	-- behind an inner Panel that does the clipping, so the shadow isn't clipped.\
+	-- transparent geometry frame holding the shadow + the clipped panel\
 	local rootFrame = UI.new(\"Frame\", {\
 		Name = \"Window\",\
-		Size = UDim2.fromOffset(size.X, size.Y),\
-		Position = UDim2.fromOffset(pos.X, pos.Y),\
+		Size = UDim2.fromOffset(self._size.X, self._size.Y),\
 		BackgroundTransparency = 1,\
 		Visible = false,\
+		Parent = screenGui,\
 	})\
 	self.root = rootFrame\
 \
-	-- soft drop shadow behind the window\
 	UI.new(\"ImageLabel\", {\
 		Name = \"Shadow\",\
 		AnchorPoint = Vector2.new(0.5, 0.5),\
 		Position = UDim2.fromScale(0.5, 0.5),\
-		Size = UDim2.new(1, 48, 1, 48),\
+		Size = UDim2.new(1, 40, 1, 40),\
 		BackgroundTransparency = 1,\
-		Image = \"rbxassetid://6015897843\",\
-		ImageColor3 = Skin.Shadow,\
-		ImageTransparency = 0.4,\
+		Image = Skin.ShadowImage,\
+		ImageColor3 = Color3.new(0, 0, 0),\
+		ImageTransparency = 0.45,\
 		ScaleType = Enum.ScaleType.Slice,\
-		SliceCenter = Rect.new(49, 49, 450, 450),\
+		SliceCenter = Rect.new(12, 12, 13, 13),\
 		ZIndex = 0,\
 		Parent = rootFrame,\
 	})\
 \
-	-- the visible, clipped panel with a subtle top->bottom gradient\
 	local panel = UI.new(\"Frame\", {\
 		Name = \"Panel\",\
 		Size = UDim2.fromScale(1, 1),\
-		BackgroundColor3 = Color3.new(1, 1, 1),  -- gradient supplies the colour\
+		BackgroundColor3 = Skin.Panel,\
 		BorderSizePixel = 0,\
 		ClipsDescendants = true,\
 		ZIndex = 1,\
@@ -6832,114 +6639,57 @@ function Window:_build()\
 	}, {\
 		UI.corner(Skin.CornerRadius),\
 		UI.stroke(Skin.Stroke, 1, Skin.StrokeTransparency),\
-		UI.gradient(Skin.SurfaceTop, Skin.SurfaceBottom, 90),\
 	})\
 	self.panel = panel\
 \
-	-- header / title bar: near-black, with the close (X) on the LEFT (Roblox style)\
+	-- header\
 	local header = UI.new(\"Frame\", {\
 		Name = \"Header\",\
 		Size = UDim2.new(1, 0, 0, Skin.HeaderHeight),\
-		BackgroundColor3 = Skin.Header,\
-		BorderSizePixel = 0,\
+		BackgroundTransparency = 1,\
 		ZIndex = 2,\
-	}, { UI.corner(Skin.CornerRadius) })\
-	UI.new(\"Frame\", {   -- square off the header's bottom corners against the body\
-		Name = \"HeaderFill\",\
-		AnchorPoint = Vector2.new(0, 1),\
-		Position = UDim2.fromScale(0, 1),\
-		Size = UDim2.new(1, 0, 0, Skin.CornerRadius.Offset),\
-		BackgroundColor3 = Skin.Header,\
-		BorderSizePixel = 0,\
-		Parent = header,\
+		Parent = panel,\
 	})\
-	header.Parent = panel\
 	self.header = header\
 \
-	-- a thin, transparent icon button with a faint hover highlight\
-	local function iconButton(name: string, glyph: string, textSize: number, callback: () -> ()): TextButton\
-		local button = UI.new(\"TextButton\", {\
-			Name = name,\
-			Size = UDim2.fromOffset(32, 32),\
-			BackgroundColor3 = Color3.new(1, 1, 1),\
-			BackgroundTransparency = 1,\
-			AutoButtonColor = false,\
-			Text = glyph,\
-			Font = Skin.Font,\
-			TextColor3 = Skin.Text,\
-			TextSize = textSize,\
-			ZIndex = 3,\
-		}, { UI.corner(Skin.ButtonRadius) }) :: TextButton\
-		local hover = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)\
-		self.janitor:add(button.MouseEnter:Connect(function()\
-			TweenService:Create(button, hover, { BackgroundTransparency = 0.88 }):Play()\
-		end))\
-		self.janitor:add(button.MouseLeave:Connect(function()\
-			TweenService:Create(button, hover, { BackgroundTransparency = 1 }):Play()\
-		end))\
-		self.janitor:add(button.Activated:Connect(callback))\
-		return button\
-	end\
+	self.titleLabel = UI.new(\"TextLabel\", {\
+		Name = \"Title\",\
+		AnchorPoint = Vector2.new(0, 0.5),\
+		Position = UDim2.new(0, 52, 0.5, 0),\
+		Size = UDim2.new(1, -110, 1, 0),\
+		BackgroundTransparency = 1,\
+		FontFace = Skin.TitleFontFace,\
+		Text = self.title,\
+		TextColor3 = Skin.Text,\
+		TextSize = 18,\
+		TextXAlignment = Enum.TextXAlignment.Left,\
+		TextTruncate = Enum.TextTruncate.AtEnd,\
+		ZIndex = 3,\
+		Parent = header,\
+	})\
 \
-	-- close (X) on the left\
-	local closeButton = iconButton(\"Close\", \"\\u{2715}\", 16, function()\
-		self:close()\
-	end)\
-	closeButton.AnchorPoint = Vector2.new(0, 0.5)\
-	closeButton.Position = UDim2.new(0, 8, 0.5, 0)\
-	closeButton.Parent = header\
-\
-	local titleIcon = UI.new(\"ImageLabel\", {\
+	self.titleIcon = UI.new(\"ImageLabel\", {\
 		Name = \"TitleIcon\",\
 		AnchorPoint = Vector2.new(0, 0.5),\
-		Position = UDim2.new(0, 50, 0.5, 0),\
+		Position = UDim2.new(0, 52, 0.5, 0),\
 		Size = UDim2.fromOffset(22, 22),\
 		BackgroundTransparency = 1,\
 		Visible = false,\
 		ZIndex = 3,\
 		Parent = header,\
 	})\
-	self.titleIcon = titleIcon\
 \
-	local titleLabel = UI.new(\"TextLabel\", {\
-		Name = \"Title\",\
+	-- a holder the close Icon's widget is parented into (left, Roblox style)\
+	self.closeHolder = UI.new(\"Frame\", {\
+		Name = \"CloseHolder\",\
 		AnchorPoint = Vector2.new(0, 0.5),\
-		Position = UDim2.new(0, 50, 0.5, 0),\
-		Size = UDim2.new(1, -140, 1, 0),\
+		Position = UDim2.new(0, 6, 0.5, 0),\
+		Size = UDim2.fromOffset(38, 38),\
 		BackgroundTransparency = 1,\
-		Font = Skin.TitleFont,\
-		Text = self.title,\
-		TextColor3 = Skin.Text,\
-		TextSize = 17,\
-		TextXAlignment = Enum.TextXAlignment.Left,\
-		TextTruncate = Enum.TextTruncate.AtEnd,\
 		ZIndex = 3,\
 		Parent = header,\
 	})\
-	self.titleLabel = titleLabel\
-\
-	-- right-side controls: minimize, maximize (thin icons)\
-	local controls = UI.new(\"Frame\", {\
-		Name = \"Controls\",\
-		AnchorPoint = Vector2.new(1, 0.5),\
-		Position = UDim2.new(1, -6, 0.5, 0),\
-		Size = UDim2.fromOffset(72, 32),\
-		BackgroundTransparency = 1,\
-		ZIndex = 3,\
-	}, { UI.list(Enum.FillDirection.Horizontal, 4) })\
-	;(controls:FindFirstChildOfClass(\"UIListLayout\") :: UIListLayout).HorizontalAlignment = Enum.HorizontalAlignment.Right\
-	controls.Parent = header\
-\
-	local minButton = iconButton(\"Minimize\", \"\\u{2013}\", 18, function()\
-		self:minimize()\
-	end)\
-	minButton.LayoutOrder = 1\
-	minButton.Parent = controls\
-	self.maximizeButton = iconButton(\"Maximize\", \"\\u{25A1}\", 15, function()\
-		if self.isMaximized then self:restore() else self:maximize() end\
-	end)\
-	self.maximizeButton.LayoutOrder = 2\
-	self.maximizeButton.Parent = controls\
+	self:_buildCloseIcon()\
 \
 	-- divider under the header\
 	self.divider = UI.new(\"Frame\", {\
@@ -6947,13 +6697,14 @@ function Window:_build()\
 		Position = UDim2.new(0, 0, 0, Skin.HeaderHeight),\
 		Size = UDim2.new(1, 0, 0, 1),\
 		BackgroundColor3 = Skin.Divider,\
+		BackgroundTransparency = 0.85,\
 		BorderSizePixel = 0,\
 		ZIndex = 2,\
 		Parent = panel,\
 	})\
 \
-	-- body (transparent so the panel gradient shows through)\
-	local body = UI.new(\"Frame\", {\
+	-- body (transparent; adopted content renders here)\
+	self.body = UI.new(\"Frame\", {\
 		Name = \"Body\",\
 		AnchorPoint = Vector2.new(0, 1),\
 		Position = UDim2.fromScale(0, 1),\
@@ -6962,185 +6713,93 @@ function Window:_build()\
 		BorderSizePixel = 0,\
 		ClipsDescendants = true,\
 		ZIndex = 1,\
-	}, { UI.padding(0) })\
-	body.Parent = panel\
-	self.body = body\
+		Parent = panel,\
+	})\
 \
-	self:_wireDrag()\
-	self:_wireResize()\
+	self:_place()\
+end\
 \
-	-- click anywhere to focus\
-	self.janitor:add(panel.InputBegan:Connect(function(input)\
-		if input.UserInputType == Enum.UserInputType.MouseButton1\
-			or input.UserInputType == Enum.UserInputType.Touch then\
-			self:focus()\
+-- the close button is a real Icon (matches the theme, ratios, hover)\
+function Window:_buildCloseIcon()\
+	local Icon = require(root) :: any  -- lazy: the Material module (init.lua)\
+	local closeIcon = Icon.new()\
+	closeIcon:setLabel(\"\\u{2715}\")\
+	closeIcon:modifyTheme({\
+		{ \"IconLabel\", \"Text\", \"\\u{2715}\", \"Deselected\" },\
+		{ \"IconLabel\", \"Text\", \"\\u{2715}\", \"Selected\" },\
+		{ \"IconLabel\", \"FontFace\", Skin.TitleFontFace },\
+		{ \"IconLabel\", \"TextSize\", 18 },\
+		{ \"IconImage\", \"Image\", \"\" },\
+		{ \"Widget\", \"MinimumWidth\", 38 },\
+		{ \"Widget\", \"MinimumHeight\", 38 },\
+		{ \"IconButton\", \"BackgroundTransparency\", 1, \"Deselected\" },\
+	})\
+	closeIcon:oneClick(true)\
+	closeIcon:autoDeselect(false)  -- don't deselect the user's other topbar icons\
+	closeIcon.widget.Parent = self.closeHolder\
+	closeIcon.widget.Position = UDim2.fromScale(0, 0)\
+	self.closeIcon = closeIcon\
+	self.janitor:add(function()\
+		closeIcon:destroy()\
+	end)\
+	self.janitor:add(closeIcon.selected:Connect(function()\
+		if self.ownerIcon then\
+			self.ownerIcon:deselect(\"WindowClose\", self.ownerIcon)\
+		else\
+			self:close()\
 		end\
 	end))\
 end\
 \
-local function isPointerDown(input): boolean\
-	return input.UserInputType == Enum.UserInputType.MouseButton1\
-		or input.UserInputType == Enum.UserInputType.Touch\
-end\
-\
-local function isPointerMove(input): boolean\
-	return input.UserInputType == Enum.UserInputType.MouseMovement\
-		or input.UserInputType == Enum.UserInputType.Touch\
-end\
-\
-function Window:_wireDrag()\
-	local dragging, dragStart, startPos = false, Vector3.zero, Vector2.zero\
-	self.janitor:add(self.header.InputBegan:Connect(function(input)\
-		if not self.draggable or self.isMaximized or not isPointerDown(input) then\
-			return\
-		end\
-		dragging = true\
-		dragStart = input.Position\
-		startPos = Vector2.new(self.root.Position.X.Offset, self.root.Position.Y.Offset)\
-	end))\
-	self.janitor:add(UserInputService.InputChanged:Connect(function(input)\
-		if not dragging or not isPointerMove(input) then\
-			return\
-		end\
-		local delta = input.Position - dragStart\
-		self:_place(startPos + Vector2.new(delta.X, delta.Y), nil)\
-	end))\
-	self.janitor:add(UserInputService.InputEnded:Connect(function(input)\
-		if isPointerDown(input) then\
-			dragging = false\
-		end\
-	end))\
-\
-	-- double-click header to toggle maximize\
-	self.janitor:add(self.header.InputBegan:Connect(function(input)\
-		if input.UserInputType ~= Enum.UserInputType.MouseButton1 then\
-			return\
-		end\
-		local now = os.clock()\
-		if self._lastHeaderClick and now - self._lastHeaderClick < 0.3 then\
-			if self.isMaximized then self:restore() else self:maximize() end\
-		end\
-		self._lastHeaderClick = now\
-	end))\
-end\
-\
-function Window:_wireResize()\
-	for name, dir in HANDLES do\
-		local dirX, dirY = dir[1], dir[2]\
-		local thickness = 8\
-		local grip = UI.new(\"Frame\", {\
-			Name = \"Resize\" .. name,\
-			BackgroundTransparency = 1,\
-			ZIndex = 5,\
-			AnchorPoint = Vector2.new((dirX + 1) / 2, (dirY + 1) / 2),\
-			Position = UDim2.fromScale((dirX + 1) / 2, (dirY + 1) / 2),\
-			Size = UDim2.new(\
-				if dirX == 0 then 1 else 0, if dirX == 0 then -thickness * 2 else thickness,\
-				if dirY == 0 then 1 else 0, if dirY == 0 then -thickness * 2 else thickness\
-			),\
-			Parent = self.root,\
-		})\
-		local resizing, startPointer, startPos, startSize = false, Vector3.zero, Vector2.zero, Vector2.zero\
-		self.janitor:add(grip.InputBegan:Connect(function(input)\
-			if not self.resizable or self.isMaximized or not isPointerDown(input) then\
-				return\
-			end\
-			resizing = true\
-			startPointer = input.Position\
-			startPos = Vector2.new(self.root.Position.X.Offset, self.root.Position.Y.Offset)\
-			startSize = Vector2.new(self.root.Size.X.Offset, self.root.Size.Y.Offset)\
-			self:focus()\
-		end))\
-		self.janitor:add(UserInputService.InputChanged:Connect(function(input)\
-			if not resizing or not isPointerMove(input) then\
-				return\
-			end\
-			local delta = input.Position - startPointer\
-			local newW = math.max(MIN_WIDTH, startSize.X + dirX * delta.X)\
-			local newH = math.max(MIN_HEIGHT, startSize.Y + dirY * delta.Y)\
-			local newX = if dirX == -1 then startPos.X + (startSize.X - newW) else startPos.X\
-			local newY = if dirY == -1 then startPos.Y + (startSize.Y - newH) else startPos.Y\
-			self:_place(Vector2.new(newX, newY), Vector2.new(newW, newH))\
-			self.resized:Fire(newW, newH)\
-		end))\
-		self.janitor:add(UserInputService.InputEnded:Connect(function(input)\
-			if isPointerDown(input) then\
-				resizing = false\
-			end\
-		end))\
-	end\
-end\
-\
--- clamp + apply position (and optionally size) within the viewport\
-function Window:_place(position: Vector2, size: Vector2?)\
+-- position the panel per its dock + size\
+function Window:_place()\
 	local vp = viewport()\
-	local currentSize = size or Vector2.new(self.root.Size.X.Offset, self.root.Size.Y.Offset)\
-	local x = math.clamp(position.X, 0, math.max(0, vp.X - currentSize.X))\
-	local y = math.clamp(position.Y, 0, math.max(0, vp.Y - currentSize.Y))\
-	self.root.Position = UDim2.fromOffset(x, y)\
-	if size then\
-		self.root.Size = UDim2.fromOffset(size.X, size.Y)\
+	if self._dock == \"top\" then\
+		self.root.AnchorPoint = Vector2.new(0.5, 0)\
+		self.root.Position = UDim2.new(0.5, 0, 0, 8)\
+		self.root.Size = UDim2.new(1, -16, 0, self._size.Y)\
+	else -- center\
+		self.root.AnchorPoint = Vector2.new(0.5, 0.5)\
+		self.root.Position = UDim2.fromScale(0.5, 0.5)\
+		self.root.Size = UDim2.fromOffset(math.min(self._size.X, vp.X - 24), math.min(self._size.Y, vp.Y - 24))\
 	end\
-	self.moved:Fire(x, y)\
 end\
 \
---- Sets the window's title text.\
+--- Sets the panel title.\
 function Window:setTitle(text: string)\
 	self.title = text\
 	self.titleLabel.Text = text\
 	return self\
 end\
 \
---- Sets the small icon shown left of the title (an asset id or asset string).\
+--- Sets a small icon shown left of the title (asset id or asset string).\
 function Window:setIcon(imageId: (number | string)?)\
 	if imageId == nil then\
 		self.titleIcon.Visible = false\
+		self.titleLabel.Position = UDim2.new(0, 52, 0.5, 0)\
 	else\
 		self.titleIcon.Image = if tonumber(imageId) then `rbxassetid://{imageId}` else imageId\
 		self.titleIcon.Visible = true\
-		self.titleLabel.Position = UDim2.new(0, 40, 0.5, 0)\
+		self.titleLabel.Position = UDim2.new(0, 82, 0.5, 0)\
 	end\
 	return self\
 end\
 \
---- Sets the window's pixel size (clamped to the 220×140 minimum).\
+--- Sets the panel's pixel size (used by the `center` dock).\
 function Window:setSize(width: number, height: number)\
-	self:_place(\
-		Vector2.new(self.root.Position.X.Offset, self.root.Position.Y.Offset),\
-		Vector2.new(math.max(MIN_WIDTH, width), math.max(MIN_HEIGHT, height))\
-	)\
+	self._size = Vector2.new(width, height)\
+	self:_place()\
 	return self\
 end\
 \
---- Sets the window's top-left pixel position.\
-function Window:setPosition(x: number, y: number)\
-	self:_place(Vector2.new(x, y), nil)\
+--- Docks the panel `\"center\"` (default) or `\"top\"` (full-width, like the Shop).\
+function Window:setDock(where: \"center\" | \"top\")\
+	self._dock = where\
+	self:_place()\
 	return self\
 end\
 \
---- Centers the window in the viewport.\
-function Window:center()\
-	local vp = viewport()\
-	local s = Vector2.new(self.root.Size.X.Offset, self.root.Size.Y.Offset)\
-	self:_place((vp - s) / 2, nil)\
-	return self\
-end\
-\
---- Enables or disables title-bar dragging (default true).\
-function Window:setDraggable(bool: boolean)\
-	self.draggable = bool\
-	return self\
-end\
-\
---- Enables or disables edge/corner resizing (default true).\
-function Window:setResizable(bool: boolean)\
-	self.resizable = bool\
-	return self\
-end\
-\
---- Shows or hides the title bar. Hidden gives the headerless, centered look of\
---- Roblox's respawn/confirm modals — the body fills the whole panel. Dragging\
---- (which lives on the header) is unavailable while hidden.\
+--- Shows or hides the title bar (hidden = the headerless respawn-modal look).\
 function Window:setHeaderVisible(bool: boolean)\
 	self.headerVisible = bool\
 	self.header.Visible = bool\
@@ -7149,8 +6808,8 @@ function Window:setHeaderVisible(bool: boolean)\
 	return self\
 end\
 \
---- Makes the window modal: a dimmed backdrop covers everything behind it while\
---- it is open. With `dismissable` (default true) clicking the backdrop closes it.\
+--- Makes the panel modal: a dimmed backdrop covers everything behind it while\
+--- open; with `dismissable` (default true) clicking the backdrop closes it.\
 function Window:setModal(bool: boolean, dismissable: boolean?)\
 	self.isModal = bool\
 	if dismissable ~= nil then\
@@ -7159,10 +6818,8 @@ function Window:setModal(bool: boolean, dismissable: boolean?)\
 	return self\
 end\
 \
---- Reparents an existing GuiObject into the window body, remembering where it\
---- came from. Its original parent, size, and position are restored on\
---- [[Window:release]], [[Window:close]], or destroy — Material only borrows it.\
---- @param guiObject any GuiObject (a Frame off your own ScreenGui, etc.)\
+--- Reparents an existing GuiObject into the body, remembering where it came\
+--- from; restored on [[Window:release]] / close / destroy.\
 function Window:adopt(guiObject: GuiObject)\
 	if self._adopted[guiObject] then\
 		return self\
@@ -7180,7 +6837,7 @@ function Window:adopt(guiObject: GuiObject)\
 	return self\
 end\
 \
---- Restores every adopted GuiObject to its original parent and geometry.\
+--- Restores every adopted GuiObject to where it came from.\
 function Window:release()\
 	for guiObject, saved in self._adopted do\
 		if guiObject and guiObject.Parent == self.body then\
@@ -7199,326 +6856,77 @@ function Window:getBody(): Frame\
 	return self.body\
 end\
 \
---- Opens the window: parents it into the shared layer, registers with the\
---- [[WindowController]], focuses it, shows the modal backdrop if set, and plays\
---- the scale-fade open transition.\
-function Window:open()\
-	if self.isOpen then\
-		self:focus()\
-		return self\
-	end\
-	self.isOpen = true\
-	self.isMinimized = false\
-	self.root.Parent = WindowController.getLayer()\
-	self.root.Visible = true\
-	WindowController.register(self)\
-	if self.isModal then\
-		self:_setBackdrop(true)\
-	end\
-\
-	-- scale-fade in (driven off the Size offsets, valid before first render)\
-	local finalPos = self.root.Position\
-	local w, h = self.root.Size.X.Offset, self.root.Size.Y.Offset\
-	local sw, sh = w * 0.94, h * 0.94\
-	self.root.Position = UDim2.fromOffset(finalPos.X.Offset + (w - sw) / 2, finalPos.Y.Offset + (h - sh) / 2)\
-	self.root.Size = UDim2.fromOffset(sw, sh)\
-	TweenService:Create(self.root, OPEN_TWEEN, {\
-		Size = UDim2.fromOffset(w, h),\
-		Position = finalPos,\
-	}):Play()\
-\
-	self.opened:Fire()\
-	return self\
-end\
-\
---- Closes the window: restores adopted content, hides the backdrop,\
---- unregisters, and plays the close transition. The window can be reopened.\
-function Window:close()\
-	if not self.isOpen then\
-		return self\
-	end\
-	self.isOpen = false\
-	self.isMinimized = false\
-	self.isMaximized = false\
-	self:_setBackdrop(false)\
-	local tween = TweenService:Create(self.root, OPEN_TWEEN, {\
-		Size = UDim2.fromOffset(self.root.Size.X.Offset * 0.94, self.root.Size.Y.Offset * 0.94),\
-	})\
-	tween:Play()\
-	tween.Completed:Once(function()\
-		self.root.Visible = false\
-	end)\
-	self:release()\
-	WindowController.unregister(self)\
-	self.closed:Fire()\
-	return self\
-end\
-\
---- Opens the window if closed, closes it if open.\
-function Window:toggle()\
-	if self.isOpen and not self.isMinimized then\
-		self:close()\
-	else\
-		self:open()\
-	end\
-	return self\
-end\
-\
---- Hides the window into the [[Dock]] without closing it (adopted content\
---- stays put). Restore with [[Window:restore]] or the dock button.\
-function Window:minimize()\
-	if not self.isOpen or self.isMinimized then\
-		return self\
-	end\
-	self.isMinimized = true\
-	self.root.Visible = false\
-	self:_setBackdrop(false)\
-	WindowController.notifyMinimized(self)\
-	self.minimized:Fire()\
-	return self\
-end\
-\
---- Expands the window to fill the viewport (remembering the previous rect).\
-function Window:maximize()\
-	if self.isMaximized then\
-		return self\
-	end\
-	self._restoreRect = {\
-		position = self.root.Position,\
-		size = self.root.Size,\
-	}\
-	self.isMaximized = true\
-	local vp = viewport()\
-	TweenService:Create(self.root, OPEN_TWEEN, {\
-		Position = UDim2.fromOffset(8, 8),\
-		Size = UDim2.fromOffset(vp.X - 16, vp.Y - 16),\
-	}):Play()\
-	self.maximizeButton.Text = \"\\u{2750}\"\
-	self.maximized:Fire()\
-	return self\
-end\
-\
---- Un-minimizes or un-maximizes back to the window's previous size/position.\
-function Window:restore()\
-	if self.isMinimized then\
-		self.isMinimized = false\
-		self.root.Visible = true\
-		WindowController.focus(self)\
-		WindowController.notifyRestored(self)\
-		self.restored:Fire()\
-		return self\
-	end\
-	if self.isMaximized and self._restoreRect then\
-		self.isMaximized = false\
-		TweenService:Create(self.root, OPEN_TWEEN, {\
-			Position = self._restoreRect.position,\
-			Size = self._restoreRect.size,\
-		}):Play()\
-		self.maximizeButton.Text = \"\\u{25A1}\"\
-		self.restored:Fire()\
-	end\
-	return self\
-end\
-\
---- Brings the window to the front and marks it the active window.\
-function Window:focus()\
-	if not self.isOpen then\
-		return self\
-	end\
-	WindowController.focus(self)\
-	self.focused:Fire()\
-	return self\
-end\
-\
 function Window:_setBackdrop(visible: boolean)\
-	local backdrop = WindowController.getBackdrop()\
+	local _, back = getLayer()\
 	if visible then\
-		backdrop.ZIndex = math.max(1, self._z - 1)\
-		backdrop.Visible = true\
-		TweenService:Create(backdrop, OPEN_TWEEN, { BackgroundTransparency = 0.45 }):Play()\
-		self._backdropConn = self.janitor:add(backdrop.InputBegan:Connect(function(input)\
-			if self.dismissable and isPointerDown(input) then\
-				self:close()\
+		back.ZIndex = 0\
+		back.Visible = true\
+		TweenService:Create(back, OPEN_TWEEN, { BackgroundTransparency = 0.5 }):Play()\
+		self._backdropConn = self.janitor:add(back.InputBegan:Connect(function(input)\
+			if self.dismissable and (input.UserInputType == Enum.UserInputType.MouseButton1\
+				or input.UserInputType == Enum.UserInputType.Touch) then\
+				if self.ownerIcon then\
+					self.ownerIcon:deselect(\"WindowBackdrop\", self.ownerIcon)\
+				else\
+					self:close()\
+				end\
 			end\
 		end))\
 	else\
-		local tween = TweenService:Create(backdrop, OPEN_TWEEN, { BackgroundTransparency = 1 })\
+		local tween = TweenService:Create(back, OPEN_TWEEN, { BackgroundTransparency = 1 })\
 		tween:Play()\
 		tween.Completed:Once(function()\
-			-- only hide if no other modal re-showed it\
-			if backdrop.BackgroundTransparency >= 1 then\
-				backdrop.Visible = false\
+			if back.BackgroundTransparency >= 1 then\
+				back.Visible = false\
 			end\
 		end)\
 	end\
 end\
 \
---- Destroys the window and everything it owns (adopted content is released\
---- first). Alias: `Destroy`.\
+--- Opens the panel (usually driven by the icon being selected).\
+function Window:open()\
+	if self.isOpen then\
+		return self\
+	end\
+	self.isOpen = true\
+	self.root.Visible = true\
+	if self.isModal then\
+		self:_setBackdrop(true)\
+	end\
+	-- scale-fade in\
+	local w, h = self.root.Size.X, self.root.Size.Y\
+	self.root.Size = UDim2.new(w.Scale * 0.96, w.Offset * 0.96, h.Scale * 0.96, h.Offset * 0.96)\
+	local target = if self._dock == \"top\"\
+		then UDim2.new(1, -16, 0, self._size.Y)\
+		else UDim2.fromOffset(math.min(self._size.X, viewport().X - 24), math.min(self._size.Y, viewport().Y - 24))\
+	TweenService:Create(self.root, OPEN_TWEEN, { Size = target }):Play()\
+	self.opened:Fire()\
+	return self\
+end\
+\
+--- Closes the panel (usually driven by the icon being deselected).\
+function Window:close()\
+	if not self.isOpen then\
+		return self\
+	end\
+	self.isOpen = false\
+	self:_setBackdrop(false)\
+	self.root.Visible = false\
+	self.closed:Fire()\
+	return self\
+end\
+\
+--- Destroys the panel and its close icon; adopted content is released first.\
 function Window:destroy()\
 	if self.isDestroyed then\
 		return\
 	end\
 	self.isDestroyed = true\
 	self.janitor:clean()\
-	if self.root then\
-		self.root:Destroy()\
-	end\
 end\
 Window.Destroy = Window.destroy\
 \
 return (Window :: any) :: Types.StaticWindow\
-"},
-{"Material/Windows/WindowController","ModuleScript","--- The window manager: one singleton owning the shared `MaterialWindows`\
---- ScreenGui, the registry of every open [[Window]], z-ordering and focus, the\
---- optional modal backdrop, and the [[Dock]] feed. You rarely touch it\
---- directly — [[Window]] registers itself — but it's the source of truth for\
---- \"which windows exist\" and \"which one is active\".\
----\
---- ```lua react to any window opening\
---- Material.WindowController.windowRegistered:Connect(function(window)\
----     print(\"opened\", window.title)\
---- end)\
---- ```\
---- @section Windows\
---- @client\
-\
-local Players = game:GetService(\"Players\")\
-\
-local root = script.Parent.Parent\
-local Types = require(root.Types)\
-local Signal = require(root.Packages.GoodSignal)\
-local UI = require(root.UI)\
-local Skin = require(root.Skin)\
-\
-local WindowController = {}\
-WindowController.windows = {}                         -- [UID] = Window\
-WindowController.activeWindow = nil                   -- the focused Window, or nil\
-WindowController.windowRegistered = Signal.new()      -- (window)\
-WindowController.windowUnregistered = Signal.new()    -- (window)\
-WindowController.windowMinimized = Signal.new()       -- (window)\
-WindowController.windowRestored = Signal.new()        -- (window)\
-WindowController.activeChanged = Signal.new()         -- (window | nil)\
-WindowController.baseDisplayOrder = 50\
-\
-local topZ = 0\
-local layer: ScreenGui? = nil\
-local backdrop: Frame? = nil\
-\
-local function buildLayer(): ScreenGui\
-	if layer then\
-		return layer\
-	end\
-	local playerGui = Players.LocalPlayer:WaitForChild(\"PlayerGui\")\
-	local screenGui = UI.new(\"ScreenGui\", {\
-		Name = \"MaterialWindows\",\
-		ResetOnSpawn = false,\
-		IgnoreGuiInset = true,\
-		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,\
-		DisplayOrder = WindowController.baseDisplayOrder,\
-		Parent = playerGui,\
-	})\
-	backdrop = UI.new(\"Frame\", {\
-		Name = \"Backdrop\",\
-		Size = UDim2.fromScale(1, 1),\
-		BackgroundColor3 = Skin.Backdrop,\
-		BackgroundTransparency = 1,\
-		Visible = false,\
-		ZIndex = 0,\
-		Parent = screenGui,\
-	}) :: Frame\
-	layer = screenGui\
-	return screenGui\
-end\
-\
---- Returns the shared ScreenGui every window is parented to, building it (and\
---- the modal backdrop) on first call.\
-function WindowController.getLayer(): ScreenGui\
-	return buildLayer()\
-end\
-\
---- Returns the shared modal backdrop frame (behind the active modal window).\
-function WindowController.getBackdrop(): Frame\
-	buildLayer()\
-	return backdrop :: Frame\
-end\
-\
---- Registers a window and focuses it. Called by [[Window]] on open.\
-function WindowController.register(window: any)\
-	WindowController.windows[window.UID] = window\
-	WindowController.windowRegistered:Fire(window)\
-	WindowController.focus(window)\
-end\
-\
--- when the active window goes away (close/minimize), raise the next top-most\
-local function promoteNext(goneWindow: any)\
-	if WindowController.activeWindow ~= goneWindow then\
-		return\
-	end\
-	WindowController.activeWindow = nil\
-	local topMost, bestZ = nil, -math.huge\
-	for _, other in WindowController.windows do\
-		if other ~= goneWindow and other.isOpen and not other.isMinimized and other._z > bestZ then\
-			topMost, bestZ = other, other._z\
-		end\
-	end\
-	if topMost then\
-		WindowController.focus(topMost)\
-	else\
-		WindowController.activeChanged:Fire(nil)\
-	end\
-end\
-\
---- Unregisters a window and, if it was active, promotes the next top-most\
---- window (or clears the active window). Called by [[Window]] on close.\
-function WindowController.unregister(window: any)\
-	if WindowController.windows[window.UID] == nil then\
-		return\
-	end\
-	WindowController.windows[window.UID] = nil\
-	WindowController.windowUnregistered:Fire(window)\
-	promoteNext(window)\
-end\
-\
---- Called by [[Window:minimize]]: keeps the window registered (so the [[Dock]]\
---- can list it) but yields focus to the next top-most window.\
-function WindowController.notifyMinimized(window: any)\
-	WindowController.windowMinimized:Fire(window)\
-	promoteNext(window)\
-end\
-\
---- Called by [[Window:restore]] when a minimized window returns.\
-function WindowController.notifyRestored(window: any)\
-	WindowController.windowRestored:Fire(window)\
-end\
-\
---- Brings a window to the front and marks it active — raising its ZIndex above\
---- every other window and firing the `activeChanged` signal.\
-function WindowController.focus(window: any)\
-	topZ += 1\
-	window._z = topZ\
-	if window.root then\
-		window.root.ZIndex = topZ\
-	end\
-	if WindowController.activeWindow ~= window then\
-		WindowController.activeWindow = window\
-		WindowController.activeChanged:Fire(window)\
-	end\
-end\
-\
---- Returns the registry of open windows, keyed by UID.\
-function WindowController.getWindows()\
-	return WindowController.windows\
-end\
-\
---- Closes every open window.\
-function WindowController.closeAll()\
-	for _, window in WindowController.windows do\
-		window:close()\
-	end\
-end\
-\
-return (WindowController :: any) :: Types.WindowController\
 "},
 }
 local ReplicatedStorage = game:GetService("ReplicatedStorage")

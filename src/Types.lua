@@ -27,34 +27,23 @@ export type Modification = { any }
 
 ---------------------- WINDOWS & OVERLAYS (Material additions) ----------------------
 
--- A draggable, resizable window emulating Roblox's in-game core UI.
+-- A Roblox-style panel owned by an icon: opens on select, closes on deselect.
 export type Window = {
 	-- fields
-	UID: string,
 	title: string,
 	isOpen: boolean,
-	isMinimized: boolean,
-	isMaximized: boolean,
 	isModal: boolean,
+	ownerIcon: any,
 	root: Frame,
 	body: Frame,
 	-- events
 	opened: Signal,
 	closed: Signal,
-	minimized: Signal,
-	maximized: Signal,
-	restored: Signal,
-	focused: Signal,
-	moved: Signal<number, number>,
-	resized: Signal<number, number>,
 	-- methods (chainable)
 	setTitle: (self: Window, text: string) -> Window,
 	setIcon: (self: Window, imageId: (number | string)?) -> Window,
 	setSize: (self: Window, width: number, height: number) -> Window,
-	setPosition: (self: Window, x: number, y: number) -> Window,
-	center: (self: Window) -> Window,
-	setDraggable: (self: Window, enabled: boolean) -> Window,
-	setResizable: (self: Window, enabled: boolean) -> Window,
+	setDock: (self: Window, where: "center" | "top") -> Window,
 	setHeaderVisible: (self: Window, enabled: boolean) -> Window,
 	setModal: (self: Window, enabled: boolean, dismissable: boolean?) -> Window,
 	adopt: (self: Window, guiObject: GuiObject) -> Window,
@@ -62,20 +51,15 @@ export type Window = {
 	getBody: (self: Window) -> Frame,
 	open: (self: Window) -> Window,
 	close: (self: Window) -> Window,
-	toggle: (self: Window) -> Window,
-	minimize: (self: Window) -> Window,
-	maximize: (self: Window) -> Window,
-	restore: (self: Window) -> Window,
-	focus: (self: Window) -> Window,
 	destroy: (self: Window) -> (),
 }
 
 export type StaticWindow = {
 	new: typeof(
 		--[[
-			Constructs a hidden, centered 480x320 window. Call <code>:open()</code> to show it.
+			Constructs a panel owned by an icon. Prefer icon:setWindow() which calls this.
 		]]
-		function(): Window
+		function(ownerIcon: any?): Window
 			return (nil :: any) :: Window
 		end
 	),
@@ -87,36 +71,8 @@ export type WindowConfig = {
 	icon: (number | string)?,
 	width: number?,
 	height: number?,
+	dock: ("center" | "top")?,
 	modal: boolean?,
-	resizable: boolean?,
-}
-
--- The singleton that owns the shared window layer, z-order, focus, and dock feed.
-export type WindowController = {
-	windows: { [string]: Window },
-	activeWindow: Window?,
-	baseDisplayOrder: number,
-	windowRegistered: Signal<Window>,
-	windowUnregistered: Signal<Window>,
-	windowMinimized: Signal<Window>,
-	windowRestored: Signal<Window>,
-	activeChanged: Signal,
-	getLayer: () -> ScreenGui,
-	getBackdrop: () -> Frame,
-	register: (window: Window) -> (),
-	unregister: (window: Window) -> (),
-	notifyMinimized: (window: Window) -> (),
-	notifyRestored: (window: Window) -> (),
-	focus: (window: Window) -> (),
-	getWindows: () -> { [string]: Window },
-	closeAll: () -> (),
-}
-
--- An optional taskbar of minimized windows.
-export type Dock = {
-	enabled: boolean,
-	setEnabled: (enabled: boolean) -> Dock,
-	getInstance: () -> Frame,
 }
 
 export type ToastOptions = {
@@ -574,19 +530,10 @@ type Methods = {
 	),
 	getWindow: typeof(
 		--[[
-			Returns the Window bound to this icon (via setWindow or bindWindow), or nil.
+			Returns the Window created for this icon by setWindow, or nil.
 		]]
 		function(self: Icon): Window?
 			return (nil :: any) :: Window?
-		end
-	),
-	bindWindow: typeof(
-		--[[
-			Binds an existing Window to this icon: selecting the icon opens the window,
-			deselecting closes it, and closing the window deselects the icon.
-		]]
-		function(self: Icon, window: Window): Icon
-			return nil :: any
 		end
 	),
 	destroy: typeof(
@@ -627,10 +574,8 @@ export type StaticIcon = {
 			return (nil :: any) :: Icon
 		end
 	),
-	-- Material's window + overlay subsystem (emulator layer)
+	-- Material's panels + overlays
 	Window: StaticWindow,
-	WindowController: WindowController,
-	Dock: Dock,
 	Toast: Toast,
 	Dialog: Dialog,
 	Tooltip: Tooltip,

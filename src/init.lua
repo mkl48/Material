@@ -74,8 +74,6 @@ local Types = require(script.Types)
 export type Icon = Types.Icon
 export type IconState = Types.IconState
 export type Window = Types.Window
-export type WindowController = Types.WindowController
-export type Dock = Types.Dock
 export type Toast = Types.Toast
 export type ToastOptions = Types.ToastOptions
 export type Dialog = Types.Dialog
@@ -141,11 +139,9 @@ Icon.iconAdded = Signal.new()
 Icon.iconRemoved = Signal.new()
 Icon.iconChanged = Signal.new()
 
--- Emulator subsystems: windows and overlays (Material's additions over
--- TopbarPlus). Exposed as Material.Window, Material.Toast, etc.
+-- Panels + overlays (Material's additions over TopbarPlus), themed to match
+-- the icons. Exposed as Material.Window, Material.Toast, etc.
 Icon.Window = require(iconModule.Windows.Window)
-Icon.WindowController = require(iconModule.Windows.WindowController)
-Icon.Dock = require(iconModule.Windows.Dock)
 Icon.Toast = require(iconModule.Overlays.Toast)
 Icon.Dialog = require(iconModule.Overlays.Dialog)
 Icon.Tooltip = require(iconModule.Overlays.Tooltip)
@@ -1103,15 +1099,16 @@ function Icon:addToJanitor(callback, methodName, index)
 	return self
 end
 
---- Creates a [[Window]], binds it to this icon (the shop-button pattern), and
---- returns the window so you can populate it. This is the preferred way to give
---- an icon a window — no separate `Material.Window.new()` needed.
+--- Gives this icon a [[Window]] — a Roblox-style panel that opens when the icon
+--- is selected and closes when it's deselected. Returns the window so you can
+--- populate it (`:adopt`, `:getBody`, `:setModal`, …). The panel is themed to
+--- match the topbar, and its close button is a real icon.
 ---
---- @param config optional `{ title, icon, width, height, modal, resizable }`
---- @return the created Window (already bound; call `:adopt()` / `:getBody()` on it)
+--- @param config optional `{ title, icon, width, height, dock, modal }`
+--- @return the created Window (already wired to this icon)
 function Icon:setWindow(config)
-	local window = Icon.Window.new()
 	config = config or {}
+	local window = Icon.Window.new(self)
 	if config.title then
 		window:setTitle(config.title)
 	end
@@ -1121,45 +1118,19 @@ function Icon:setWindow(config)
 	if config.width or config.height then
 		window:setSize(config.width or 480, config.height or 320)
 	end
+	if config.dock then
+		window:setDock(config.dock)
+	end
 	if config.modal ~= nil then
 		window:setModal(config.modal)
 	end
-	if config.resizable ~= nil then
-		window:setResizable(config.resizable)
-	end
-	window:center()
-	self:bindWindow(window)
+	self.boundWindow = window
 	return window
 end
 
---- Returns the [[Window]] bound to this icon (via `setWindow`/`bindWindow`), or nil.
+--- Returns the [[Window]] created for this icon by [[Icon:setWindow]], or nil.
 function Icon:getWindow()
 	return self.boundWindow
-end
-
---- Binds an existing [[Window]] to this icon: selecting the icon opens the
---- window, deselecting closes it, and the window closing deselects the icon.
---- Prefer [[Icon:setWindow]] when creating a new window for the icon.
---- @param window a [[Window]] created with `Material.Window.new()`
-function Icon:bindWindow(window)
-	self.boundWindow = window
-	self.janitor:add(self.selected:Connect(function()
-		window:open()
-	end))
-	self.janitor:add(self.deselected:Connect(function()
-		window:close()
-	end))
-	self.janitor:add(window.opened:Connect(function()
-		if not self.isSelected then
-			self:select("BoundWindow", self)
-		end
-	end))
-	self.janitor:add(window.closed:Connect(function()
-		if self.isSelected then
-			self:deselect("BoundWindow", self)
-		end
-	end))
-	return self
 end
 
 --- Blocks all user input on the icon (clicks, touches, toggle keys). Undo

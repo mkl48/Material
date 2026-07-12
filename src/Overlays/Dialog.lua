@@ -22,15 +22,15 @@ export type Button = Types.DialogButton
 export type Options = Types.DialogOptions
 
 --- Shows a modal dialog and returns its [[Window]] (already open). Headerless
---- and centered, like Roblox's respawn/confirm modals.
+--- and centered, like Roblox's respawn/confirm modals. The buttons are real
+--- [[Icon]]s so they match the theme.
 function Dialog.show(options: Options): any
+	local Icon = require(root) :: any  -- lazy: the Material module (avoids a load cycle)
 	local width = options.width or 460
-	local window = Window.new()
+	local window = Window.new()   -- no owner: a free-standing modal
 		:setSize(width, 240)
-		:setResizable(false)
 		:setModal(true, options.dismissable ~= false)
 		:setHeaderVisible(false)
-	window:center()
 
 	local body = window:getBody()
 	UI.new("UIPadding", {
@@ -39,14 +39,14 @@ function Dialog.show(options: Options): any
 		Parent = body,
 	})
 
-	-- title / message, centered in the upper area (Roblox modal style)
+	-- title / message, centered in the upper area
 	UI.new("TextLabel", {
 		Name = "Message",
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.fromScale(0.5, 0),
 		Size = UDim2.new(1, 0, 1, -64),
 		BackgroundTransparency = 1,
-		Font = Skin.TitleFont,
+		FontFace = Skin.TitleFontFace,
 		Text = options.message,
 		TextColor3 = Skin.Text,
 		TextSize = 20,
@@ -56,7 +56,7 @@ function Dialog.show(options: Options): any
 		Parent = body,
 	})
 
-	-- buttons, centered along the bottom
+	-- buttons, centered along the bottom, each a real Icon
 	local buttonRow = UI.new("Frame", {
 		Name = "Buttons",
 		AnchorPoint = Vector2.new(0.5, 1),
@@ -71,26 +71,42 @@ function Dialog.show(options: Options): any
 
 	local buttons = options.buttons or { { text = "OK", primary = true } }
 	for index, spec in buttons do
-		local fill = if spec.danger then Skin.Danger elseif spec.primary then Skin.Accent else Skin.SurfaceRaised
-		local button = UI.new("TextButton", {
-			Name = "DialogButton",
+		local fill = if spec.danger then Skin.Danger elseif spec.primary then Skin.Accent else Skin.Panel
+		-- a holder the button Icon's widget sits in (gives us the selection ring)
+		local holder = UI.new("Frame", {
+			Name = "ButtonHolder",
 			Size = UDim2.fromOffset(150, 46),
-			BackgroundColor3 = fill,
-			AutoButtonColor = true,
-			Text = spec.text,
-			Font = Skin.TitleFont,
-			TextColor3 = Color3.new(1, 1, 1),
-			TextSize = 16,
+			BackgroundTransparency = 1,
 			LayoutOrder = index,
 			Parent = buttonRow,
-		}, { UI.corner(UDim.new(0, 10)) })
-		-- primary/danger get a white selection ring; others a faint outline
-		if spec.primary or spec.danger then
-			UI.new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2, Parent = button })
-		else
-			UI.new("UIStroke", { Color = Skin.Stroke, Thickness = 1, Transparency = 0.7, Parent = button })
-		end
-		button.Activated:Connect(function()
+		}, {
+			UI.corner(UDim.new(0, 10)),
+			UI.stroke(
+				if spec.primary or spec.danger then Color3.new(1, 1, 1) else Skin.Stroke,
+				if spec.primary or spec.danger then 2 else 1,
+				if spec.primary or spec.danger then 0 else 0.7
+			),
+		})
+		local btn = Icon.new()
+		btn:modifyTheme({
+			{ "IconLabel", "Text", spec.text, "Deselected" },
+			{ "IconLabel", "Text", spec.text, "Selected" },
+			{ "IconLabel", "FontFace", Skin.TitleFontFace },
+			{ "IconLabel", "TextSize", 16 },
+			{ "IconLabel", "TextColor3", Color3.new(1, 1, 1) },
+			{ "IconImage", "Image", "" },
+			{ "Widget", "MinimumWidth", 150 },
+			{ "Widget", "MinimumHeight", 46 },
+			{ "IconButton", "BackgroundColor3", fill, "Deselected" },
+			{ "IconButton", "BackgroundColor3", fill, "Selected" },
+			{ "IconButton", "BackgroundTransparency", 0, "Deselected" },
+			{ "IconCorners", "CornerRadius", UDim.new(0, 10) },
+		})
+		btn:oneClick(true)
+		btn:autoDeselect(false)  -- don't deselect the user's topbar icons
+		btn.widget.Parent = holder
+		btn.widget.Position = UDim2.fromScale(0, 0)
+		btn.selected:Connect(function()
 			if spec.onClick then
 				spec.onClick()
 			end
