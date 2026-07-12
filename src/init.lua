@@ -1103,10 +1103,43 @@ function Icon:addToJanitor(callback, methodName, index)
 	return self
 end
 
---- Binds a [[Window]] to this icon: selecting the icon opens the window,
---- deselecting closes it, and the window closing deselects the icon. This is
---- the shop-button pattern — a topbar icon that opens a Roblox-style window —
---- in one call.
+--- Creates a [[Window]], binds it to this icon (the shop-button pattern), and
+--- returns the window so you can populate it. This is the preferred way to give
+--- an icon a window — no separate `Material.Window.new()` needed.
+---
+--- @param config optional `{ title, icon, width, height, modal, resizable }`
+--- @return the created Window (already bound; call `:adopt()` / `:getBody()` on it)
+function Icon:setWindow(config)
+	local window = Icon.Window.new()
+	config = config or {}
+	if config.title then
+		window:setTitle(config.title)
+	end
+	if config.icon then
+		window:setIcon(config.icon)
+	end
+	if config.width or config.height then
+		window:setSize(config.width or 480, config.height or 320)
+	end
+	if config.modal ~= nil then
+		window:setModal(config.modal)
+	end
+	if config.resizable ~= nil then
+		window:setResizable(config.resizable)
+	end
+	window:center()
+	self:bindWindow(window)
+	return window
+end
+
+--- Returns the [[Window]] bound to this icon (via `setWindow`/`bindWindow`), or nil.
+function Icon:getWindow()
+	return self.boundWindow
+end
+
+--- Binds an existing [[Window]] to this icon: selecting the icon opens the
+--- window, deselecting closes it, and the window closing deselects the icon.
+--- Prefer [[Icon:setWindow]] when creating a new window for the icon.
 --- @param window a [[Window]] created with `Material.Window.new()`
 function Icon:bindWindow(window)
 	self.boundWindow = window

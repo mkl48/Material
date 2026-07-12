@@ -41,9 +41,9 @@ local function build(): Frame
 	})
 	local frame = UI.new("Frame", {
 		Name = "ToastStack",
-		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 1, -18),
-		Size = UDim2.fromOffset(360, 0),
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 16),
+		Size = UDim2.fromOffset(380, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundTransparency = 1,
 		Parent = screenGui,
@@ -51,7 +51,7 @@ local function build(): Frame
 		UI.list(Enum.FillDirection.Vertical, 8),
 	})
 	local layout = frame:FindFirstChildOfClass("UIListLayout") :: UIListLayout
-	layout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+	layout.VerticalAlignment = Enum.VerticalAlignment.Top
 	container = frame
 	return frame
 end
@@ -68,28 +68,35 @@ function Toast.show(text: string, options: Options?): () -> ()
 		Name = "Toast",
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
-		BackgroundColor3 = Skin.SurfaceRaised,
+		BackgroundColor3 = Skin.Header,
 		BackgroundTransparency = 1,
 		Parent = stack,
 	}, {
-		UI.corner(UDim.new(0, 8)),
-		UI.stroke(Skin.Stroke, 1, 0.4),
+		UI.corner(UDim.new(0, 10)),
+		UI.stroke(Skin.Stroke, 1, 0.9),
 		UI.padding(12),
 		UI.list(Enum.FillDirection.Horizontal, 10),
 	})
-	-- accent stripe
-	UI.new("Frame", {
-		Name = "Stripe",
-		Size = UDim2.new(0, 3, 1, -8),
-		Position = UDim2.fromOffset(2, 4),
-		BackgroundColor3 = opts.color or Skin.Accent,
-		BorderSizePixel = 0,
-		Parent = toast,
-	}, { UI.corner(UDim.new(1, 0)) })
+	;(toast:FindFirstChildOfClass("UIListLayout") :: UIListLayout).VerticalAlignment = Enum.VerticalAlignment.Center
 
+	local iconImage: ImageLabel? = nil
+	if opts.icon then
+		iconImage = UI.new("ImageLabel", {
+			Name = "Icon",
+			Size = UDim2.fromOffset(22, 22),
+			BackgroundTransparency = 1,
+			Image = if tonumber(opts.icon) then `rbxassetid://{opts.icon}` else opts.icon,
+			ImageColor3 = Skin.Text,
+			ImageTransparency = 1,
+			LayoutOrder = 0,
+			Parent = toast,
+		}) :: ImageLabel
+	end
+
+	local textInset = (if opts.action then 90 else 0) + (if iconImage then 32 else 0) + 4
 	local label = UI.new("TextLabel", {
 		Name = "Message",
-		Size = UDim2.new(1, if opts.action then -90 else -12, 0, 0),
+		Size = UDim2.new(1, -textInset, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundTransparency = 1,
 		Font = Skin.Font,
@@ -111,6 +118,9 @@ function Toast.show(text: string, options: Options?): () -> ()
 		dismissed = true
 		TweenService:Create(toast, TWEEN, { BackgroundTransparency = 1 }):Play()
 		TweenService:Create(label, TWEEN, { TextTransparency = 1 }):Play()
+		if iconImage then
+			TweenService:Create(iconImage, TWEEN, { ImageTransparency = 1 }):Play()
+		end
 		local tween = TweenService:Create(toast, TWEEN, { Size = UDim2.new(1, 0, 0, 0) })
 		tween:Play()
 		tween.Completed:Once(function()
@@ -143,6 +153,9 @@ function Toast.show(text: string, options: Options?): () -> ()
 	-- fade in
 	TweenService:Create(toast, TWEEN, { BackgroundTransparency = 0 }):Play()
 	TweenService:Create(label, TWEEN, { TextTransparency = 0 }):Play()
+	if iconImage then
+		TweenService:Create(iconImage, TWEEN, { ImageTransparency = 0 }):Play()
+	end
 
 	task.delay(opts.duration or 3, dismiss)
 	return dismiss

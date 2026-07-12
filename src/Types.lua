@@ -55,6 +55,7 @@ export type Window = {
 	center: (self: Window) -> Window,
 	setDraggable: (self: Window, enabled: boolean) -> Window,
 	setResizable: (self: Window, enabled: boolean) -> Window,
+	setHeaderVisible: (self: Window, enabled: boolean) -> Window,
 	setModal: (self: Window, enabled: boolean, dismissable: boolean?) -> Window,
 	adopt: (self: Window, guiObject: GuiObject) -> Window,
 	release: (self: Window) -> Window,
@@ -78,6 +79,16 @@ export type StaticWindow = {
 			return (nil :: any) :: Window
 		end
 	),
+}
+
+-- Config accepted by icon:setWindow(); every field optional.
+export type WindowConfig = {
+	title: string?,
+	icon: (number | string)?,
+	width: number?,
+	height: number?,
+	modal: boolean?,
+	resizable: boolean?,
 }
 
 -- The singleton that owns the shared window layer, z-order, focus, and dock feed.
@@ -109,10 +120,11 @@ export type Dock = {
 }
 
 export type ToastOptions = {
-	duration: number?,       -- seconds before auto-dismiss (default 3)
-	action: string?,         -- optional action button label
-	onAction: (() -> ())?,   -- action button callback
-	color: Color3?,          -- accent stripe colour
+	duration: number?,          -- seconds before auto-dismiss (default 3)
+	icon: (number | string)?,   -- optional leading icon (asset id or string)
+	action: string?,            -- optional action button label
+	onAction: (() -> ())?,      -- action button callback
+	color: Color3?,             -- action button colour (default Roblox blue)
 }
 export type Toast = {
 	show: (text: string, options: ToastOptions?) -> () -> (),
@@ -550,10 +562,28 @@ type Methods = {
 			return nil :: any
 		end
 	),
+	setWindow: typeof(
+		--[[
+			Creates a Window, binds it to this icon (the shop-button pattern), and returns
+			the Window so you can populate it. Pass a config table to set title/size/etc.
+			Prefer this over Material.Window.new() when the window belongs to an icon.
+		]]
+		function(self: Icon, config: WindowConfig?): Window
+			return (nil :: any) :: Window
+		end
+	),
+	getWindow: typeof(
+		--[[
+			Returns the Window bound to this icon (via setWindow or bindWindow), or nil.
+		]]
+		function(self: Icon): Window?
+			return (nil :: any) :: Window?
+		end
+	),
 	bindWindow: typeof(
 		--[[
-			Binds a Window to this icon: selecting the icon opens the window, deselecting
-			closes it, and closing the window deselects the icon (the shop-button pattern).
+			Binds an existing Window to this icon: selecting the icon opens the window,
+			deselecting closes it, and closing the window deselects the icon.
 		]]
 		function(self: Icon, window: Window): Icon
 			return nil :: any

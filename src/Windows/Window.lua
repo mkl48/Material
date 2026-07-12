@@ -9,16 +9,16 @@
 --- [[Icon:bindWindow]] for the full shop-button experience.
 ---
 --- ```lua a shop window opened from the topbar
---- local shop = Material.Window.new()
----     :setTitle("Shop")
----     :setIcon(14723463500)
----     :setSize(560, 400)
----     :adopt(playerGui.ShopGui.Root)   -- reparent your existing UI in
----
---- Material.new()
+--- -- the preferred path: icon:setWindow creates + binds the window
+--- local shop = Material.new()
 ---     :setImage(14723463500)
 ---     :setCaption("Shop")
----     :bindWindow(shop)                -- topbar icon toggles it
+---     :setWindow({ title = "Shop", width = 560, height = 400 })
+---
+--- shop:adopt(playerGui.ShopGui.Root)   -- reparent your existing UI in
+---
+--- -- or standalone, if the window isn't tied to an icon:
+--- local win = Material.Window.new():setTitle("Inventory"):open()
 --- ```
 --- @section Windows
 --- @client
@@ -126,22 +126,23 @@ function Window:_build()
 		Parent = rootFrame,
 	})
 
-	-- the visible, clipped panel
+	-- the visible, clipped panel with a subtle top->bottom gradient
 	local panel = UI.new("Frame", {
 		Name = "Panel",
 		Size = UDim2.fromScale(1, 1),
-		BackgroundColor3 = Skin.Surface,
+		BackgroundColor3 = Color3.new(1, 1, 1),  -- gradient supplies the colour
 		BorderSizePixel = 0,
 		ClipsDescendants = true,
 		ZIndex = 1,
 		Parent = rootFrame,
 	}, {
 		UI.corner(Skin.CornerRadius),
-		UI.stroke(Skin.Stroke, 1, 0.2),
+		UI.stroke(Skin.Stroke, 1, Skin.StrokeTransparency),
+		UI.gradient(Skin.SurfaceTop, Skin.SurfaceBottom, 90),
 	})
 	self.panel = panel
 
-	-- header / title bar
+	-- header / title bar: near-black, with the close (X) on the LEFT (Roblox style)
 	local header = UI.new("Frame", {
 		Name = "Header",
 		Size = UDim2.new(1, 0, 0, Skin.HeaderHeight),
@@ -149,8 +150,7 @@ function Window:_build()
 		BorderSizePixel = 0,
 		ZIndex = 2,
 	}, { UI.corner(Skin.CornerRadius) })
-	-- square off the header's bottom corners against the body
-	UI.new("Frame", {
+	UI.new("Frame", {   -- square off the header's bottom corners against the body
 		Name = "HeaderFill",
 		AnchorPoint = Vector2.new(0, 1),
 		Position = UDim2.fromScale(0, 1),
@@ -162,11 +162,44 @@ function Window:_build()
 	header.Parent = panel
 	self.header = header
 
+	-- a thin, transparent icon button with a faint hover highlight
+	local function iconButton(name: string, glyph: string, textSize: number, callback: () -> ()): TextButton
+		local button = UI.new("TextButton", {
+			Name = name,
+			Size = UDim2.fromOffset(32, 32),
+			BackgroundColor3 = Color3.new(1, 1, 1),
+			BackgroundTransparency = 1,
+			AutoButtonColor = false,
+			Text = glyph,
+			Font = Skin.Font,
+			TextColor3 = Skin.Text,
+			TextSize = textSize,
+			ZIndex = 3,
+		}, { UI.corner(Skin.ButtonRadius) }) :: TextButton
+		local hover = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		self.janitor:add(button.MouseEnter:Connect(function()
+			TweenService:Create(button, hover, { BackgroundTransparency = 0.88 }):Play()
+		end))
+		self.janitor:add(button.MouseLeave:Connect(function()
+			TweenService:Create(button, hover, { BackgroundTransparency = 1 }):Play()
+		end))
+		self.janitor:add(button.Activated:Connect(callback))
+		return button
+	end
+
+	-- close (X) on the left
+	local closeButton = iconButton("Close", "\u{2715}", 16, function()
+		self:close()
+	end)
+	closeButton.AnchorPoint = Vector2.new(0, 0.5)
+	closeButton.Position = UDim2.new(0, 8, 0.5, 0)
+	closeButton.Parent = header
+
 	local titleIcon = UI.new("ImageLabel", {
 		Name = "TitleIcon",
 		AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.new(0, 12, 0.5, 0),
-		Size = UDim2.fromOffset(20, 20),
+		Position = UDim2.new(0, 50, 0.5, 0),
+		Size = UDim2.fromOffset(22, 22),
 		BackgroundTransparency = 1,
 		Visible = false,
 		ZIndex = 3,
@@ -177,13 +210,13 @@ function Window:_build()
 	local titleLabel = UI.new("TextLabel", {
 		Name = "Title",
 		AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.new(0, 14, 0.5, 0),
-		Size = UDim2.new(1, -160, 1, 0),
+		Position = UDim2.new(0, 50, 0.5, 0),
+		Size = UDim2.new(1, -140, 1, 0),
 		BackgroundTransparency = 1,
-		Font = Skin.Font,
+		Font = Skin.TitleFont,
 		Text = self.title,
 		TextColor3 = Skin.Text,
-		TextSize = 15,
+		TextSize = 17,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		ZIndex = 3,
@@ -191,52 +224,47 @@ function Window:_build()
 	})
 	self.titleLabel = titleLabel
 
-	-- window controls (minimize / maximize / close)
+	-- right-side controls: minimize, maximize (thin icons)
 	local controls = UI.new("Frame", {
 		Name = "Controls",
 		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -8, 0.5, 0),
-		Size = UDim2.fromOffset(112, 28),
+		Position = UDim2.new(1, -6, 0.5, 0),
+		Size = UDim2.fromOffset(72, 32),
 		BackgroundTransparency = 1,
 		ZIndex = 3,
-	}, { UI.list(Enum.FillDirection.Horizontal, 6) })
+	}, { UI.list(Enum.FillDirection.Horizontal, 4) })
+	;(controls:FindFirstChildOfClass("UIListLayout") :: UIListLayout).HorizontalAlignment = Enum.HorizontalAlignment.Right
 	controls.Parent = header
 
-	local function controlButton(name, glyph, color, order, callback)
-		local button = UI.new("TextButton", {
-			Name = name,
-			Size = UDim2.fromOffset(28, 28),
-			BackgroundColor3 = Skin.SurfaceRaised,
-			AutoButtonColor = true,
-			Text = glyph,
-			Font = Enum.Font.GothamBold,
-			TextColor3 = color,
-			TextSize = 15,
-			LayoutOrder = order,
-			ZIndex = 3,
-			Parent = controls,
-		}, { UI.corner(UDim.new(0, 6)) })
-		self.janitor:add(button.Activated:Connect(callback))
-		return button
-	end
-
-	controlButton("Minimize", "\u{2013}", Skin.TextMuted, 1, function()
+	local minButton = iconButton("Minimize", "\u{2013}", 18, function()
 		self:minimize()
 	end)
-	self.maximizeButton = controlButton("Maximize", "\u{25A1}", Skin.TextMuted, 2, function()
+	minButton.LayoutOrder = 1
+	minButton.Parent = controls
+	self.maximizeButton = iconButton("Maximize", "\u{25A1}", 15, function()
 		if self.isMaximized then self:restore() else self:maximize() end
 	end)
-	controlButton("Close", "\u{2715}", Skin.Danger, 3, function()
-		self:close()
-	end)
+	self.maximizeButton.LayoutOrder = 2
+	self.maximizeButton.Parent = controls
 
-	-- body (where content / adopted UI lives)
+	-- divider under the header
+	self.divider = UI.new("Frame", {
+		Name = "Divider",
+		Position = UDim2.new(0, 0, 0, Skin.HeaderHeight),
+		Size = UDim2.new(1, 0, 0, 1),
+		BackgroundColor3 = Skin.Divider,
+		BorderSizePixel = 0,
+		ZIndex = 2,
+		Parent = panel,
+	})
+
+	-- body (transparent so the panel gradient shows through)
 	local body = UI.new("Frame", {
 		Name = "Body",
 		AnchorPoint = Vector2.new(0, 1),
 		Position = UDim2.fromScale(0, 1),
 		Size = UDim2.new(1, 0, 1, -Skin.HeaderHeight),
-		BackgroundColor3 = Skin.Surface,
+		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		ClipsDescendants = true,
 		ZIndex = 1,
@@ -413,6 +441,17 @@ end
 --- Enables or disables edge/corner resizing (default true).
 function Window:setResizable(bool: boolean)
 	self.resizable = bool
+	return self
+end
+
+--- Shows or hides the title bar. Hidden gives the headerless, centered look of
+--- Roblox's respawn/confirm modals — the body fills the whole panel. Dragging
+--- (which lives on the header) is unavailable while hidden.
+function Window:setHeaderVisible(bool: boolean)
+	self.headerVisible = bool
+	self.header.Visible = bool
+	self.divider.Visible = bool
+	self.body.Size = UDim2.new(1, 0, 1, if bool then -Skin.HeaderHeight else 0)
 	return self
 end
 

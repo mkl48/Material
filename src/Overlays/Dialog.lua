@@ -21,66 +21,75 @@ local Dialog = {}
 export type Button = Types.DialogButton
 export type Options = Types.DialogOptions
 
---- Shows a modal dialog and returns its [[Window]] (already open).
+--- Shows a modal dialog and returns its [[Window]] (already open). Headerless
+--- and centered, like Roblox's respawn/confirm modals.
 function Dialog.show(options: Options): any
-	local width = options.width or 380
+	local width = options.width or 460
 	local window = Window.new()
-		:setTitle(options.title or "")
-		:setSize(width, 180)
+		:setSize(width, 240)
 		:setResizable(false)
 		:setModal(true, options.dismissable ~= false)
+		:setHeaderVisible(false)
 	window:center()
 
 	local body = window:getBody()
 	UI.new("UIPadding", {
-		PaddingTop = UDim.new(0, 18), PaddingBottom = UDim.new(0, 14),
-		PaddingLeft = UDim.new(0, 18), PaddingRight = UDim.new(0, 18),
+		PaddingTop = UDim.new(0, 30), PaddingBottom = UDim.new(0, 26),
+		PaddingLeft = UDim.new(0, 30), PaddingRight = UDim.new(0, 30),
 		Parent = body,
 	})
 
+	-- title / message, centered in the upper area (Roblox modal style)
 	UI.new("TextLabel", {
 		Name = "Message",
-		Size = UDim2.new(1, 0, 1, -48),
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.fromScale(0.5, 0),
+		Size = UDim2.new(1, 0, 1, -64),
 		BackgroundTransparency = 1,
-		Font = Skin.Font,
+		Font = Skin.TitleFont,
 		Text = options.message,
 		TextColor3 = Skin.Text,
-		TextSize = 15,
+		TextSize = 20,
 		TextWrapped = true,
-		TextYAlignment = Enum.TextYAlignment.Top,
-		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Center,
+		TextXAlignment = Enum.TextXAlignment.Center,
 		Parent = body,
 	})
 
+	-- buttons, centered along the bottom
 	local buttonRow = UI.new("Frame", {
 		Name = "Buttons",
-		AnchorPoint = Vector2.new(1, 1),
-		Position = UDim2.fromScale(1, 1),
-		Size = UDim2.new(1, 0, 0, 34),
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.fromScale(0.5, 1),
+		Size = UDim2.new(1, 0, 0, 48),
 		BackgroundTransparency = 1,
 		Parent = body,
 	}, {
-		UI.list(Enum.FillDirection.Horizontal, 8),
+		UI.list(Enum.FillDirection.Horizontal, 12),
 	})
-	local layout = buttonRow:FindFirstChildOfClass("UIListLayout") :: UIListLayout
-	layout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+	;(buttonRow:FindFirstChildOfClass("UIListLayout") :: UIListLayout).HorizontalAlignment = Enum.HorizontalAlignment.Center
 
 	local buttons = options.buttons or { { text = "OK", primary = true } }
 	for index, spec in buttons do
 		local fill = if spec.danger then Skin.Danger elseif spec.primary then Skin.Accent else Skin.SurfaceRaised
-		local textColor = if spec.primary or spec.danger then Color3.new(1, 1, 1) else Skin.Text
 		local button = UI.new("TextButton", {
 			Name = "DialogButton",
-			Size = UDim2.fromOffset(96, 34),
+			Size = UDim2.fromOffset(150, 46),
 			BackgroundColor3 = fill,
 			AutoButtonColor = true,
 			Text = spec.text,
-			Font = Enum.Font.GothamMedium,
-			TextColor3 = textColor,
-			TextSize = 14,
+			Font = Skin.TitleFont,
+			TextColor3 = Color3.new(1, 1, 1),
+			TextSize = 16,
 			LayoutOrder = index,
 			Parent = buttonRow,
-		}, { UI.corner(UDim.new(0, 7)) })
+		}, { UI.corner(UDim.new(0, 10)) })
+		-- primary/danger get a white selection ring; others a faint outline
+		if spec.primary or spec.danger then
+			UI.new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2, Parent = button })
+		else
+			UI.new("UIStroke", { Color = Skin.Stroke, Thickness = 1, Transparency = 0.7, Parent = button })
+		end
 		button.Activated:Connect(function()
 			if spec.onClick then
 				spec.onClick()

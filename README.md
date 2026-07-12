@@ -30,8 +30,9 @@ that emulates Roblox's own core UI:
   GuiObject.
 - **Dock** — an optional taskbar of minimized windows.
 
-Bind it all together: `icon:bindWindow(window)` turns a topbar icon into a
-shop-style button that opens a window.
+Bind it all together: `icon:setWindow({ title = "Shop" })` turns a topbar icon
+into a shop-style button that opens a window — styled to match Roblox's own
+core UI (near-black header, X on the left, dark graded body).
 
 > **Status: pre-release, Studio-verified only.** The Icon layer is the vendored
 > upstream baseline; the window/overlay layer is new and needs real Studio

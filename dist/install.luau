@@ -1107,10 +1107,43 @@ function Icon:addToJanitor(callback, methodName, index)\
 	return self\
 end\
 \
---- Binds a [[Window]] to this icon: selecting the icon opens the window,\
---- deselecting closes it, and the window closing deselects the icon. This is\
---- the shop-button pattern — a topbar icon that opens a Roblox-style window —\
---- in one call.\
+--- Creates a [[Window]], binds it to this icon (the shop-button pattern), and\
+--- returns the window so you can populate it. This is the preferred way to give\
+--- an icon a window — no separate `Material.Window.new()` needed.\
+---\
+--- @param config optional `{ title, icon, width, height, modal, resizable }`\
+--- @return the created Window (already bound; call `:adopt()` / `:getBody()` on it)\
+function Icon:setWindow(config)\
+	local window = Icon.Window.new()\
+	config = config or {}\
+	if config.title then\
+		window:setTitle(config.title)\
+	end\
+	if config.icon then\
+		window:setIcon(config.icon)\
+	end\
+	if config.width or config.height then\
+		window:setSize(config.width or 480, config.height or 320)\
+	end\
+	if config.modal ~= nil then\
+		window:setModal(config.modal)\
+	end\
+	if config.resizable ~= nil then\
+		window:setResizable(config.resizable)\
+	end\
+	window:center()\
+	self:bindWindow(window)\
+	return window\
+end\
+\
+--- Returns the [[Window]] bound to this icon (via `setWindow`/`bindWindow`), or nil.\
+function Icon:getWindow()\
+	return self.boundWindow\
+end\
+\
+--- Binds an existing [[Window]] to this icon: selecting the icon opens the\
+--- window, deselecting closes it, and the window closing deselects the icon.\
+--- Prefer [[Icon:setWindow]] when creating a new window for the icon.\
 --- @param window a [[Window]] created with `Material.Window.new()`\
 function Icon:bindWindow(window)\
 	self.boundWindow = window\
@@ -4320,66 +4353,75 @@ local Dialog = {}\
 export type Button = Types.DialogButton\
 export type Options = Types.DialogOptions\
 \
---- Shows a modal dialog and returns its [[Window]] (already open).\
+--- Shows a modal dialog and returns its [[Window]] (already open). Headerless\
+--- and centered, like Roblox's respawn/confirm modals.\
 function Dialog.show(options: Options): any\
-	local width = options.width or 380\
+	local width = options.width or 460\
 	local window = Window.new()\
-		:setTitle(options.title or \"\")\
-		:setSize(width, 180)\
+		:setSize(width, 240)\
 		:setResizable(false)\
 		:setModal(true, options.dismissable ~= false)\
+		:setHeaderVisible(false)\
 	window:center()\
 \
 	local body = window:getBody()\
 	UI.new(\"UIPadding\", {\
-		PaddingTop = UDim.new(0, 18), PaddingBottom = UDim.new(0, 14),\
-		PaddingLeft = UDim.new(0, 18), PaddingRight = UDim.new(0, 18),\
+		PaddingTop = UDim.new(0, 30), PaddingBottom = UDim.new(0, 26),\
+		PaddingLeft = UDim.new(0, 30), PaddingRight = UDim.new(0, 30),\
 		Parent = body,\
 	})\
 \
+	-- title / message, centered in the upper area (Roblox modal style)\
 	UI.new(\"TextLabel\", {\
 		Name = \"Message\",\
-		Size = UDim2.new(1, 0, 1, -48),\
+		AnchorPoint = Vector2.new(0.5, 0),\
+		Position = UDim2.fromScale(0.5, 0),\
+		Size = UDim2.new(1, 0, 1, -64),\
 		BackgroundTransparency = 1,\
-		Font = Skin.Font,\
+		Font = Skin.TitleFont,\
 		Text = options.message,\
 		TextColor3 = Skin.Text,\
-		TextSize = 15,\
+		TextSize = 20,\
 		TextWrapped = true,\
-		TextYAlignment = Enum.TextYAlignment.Top,\
-		TextXAlignment = Enum.TextXAlignment.Left,\
+		TextYAlignment = Enum.TextYAlignment.Center,\
+		TextXAlignment = Enum.TextXAlignment.Center,\
 		Parent = body,\
 	})\
 \
+	-- buttons, centered along the bottom\
 	local buttonRow = UI.new(\"Frame\", {\
 		Name = \"Buttons\",\
-		AnchorPoint = Vector2.new(1, 1),\
-		Position = UDim2.fromScale(1, 1),\
-		Size = UDim2.new(1, 0, 0, 34),\
+		AnchorPoint = Vector2.new(0.5, 1),\
+		Position = UDim2.fromScale(0.5, 1),\
+		Size = UDim2.new(1, 0, 0, 48),\
 		BackgroundTransparency = 1,\
 		Parent = body,\
 	}, {\
-		UI.list(Enum.FillDirection.Horizontal, 8),\
+		UI.list(Enum.FillDirection.Horizontal, 12),\
 	})\
-	local layout = buttonRow:FindFirstChildOfClass(\"UIListLayout\") :: UIListLayout\
-	layout.HorizontalAlignment = Enum.HorizontalAlignment.Right\
+	;(buttonRow:FindFirstChildOfClass(\"UIListLayout\") :: UIListLayout).HorizontalAlignment = Enum.HorizontalAlignment.Center\
 \
 	local buttons = options.buttons or { { text = \"OK\", primary = true } }\
 	for index, spec in buttons do\
 		local fill = if spec.danger then Skin.Danger elseif spec.primary then Skin.Accent else Skin.SurfaceRaised\
-		local textColor = if spec.primary or spec.danger then Color3.new(1, 1, 1) else Skin.Text\
 		local button = UI.new(\"TextButton\", {\
 			Name = \"DialogButton\",\
-			Size = UDim2.fromOffset(96, 34),\
+			Size = UDim2.fromOffset(150, 46),\
 			BackgroundColor3 = fill,\
 			AutoButtonColor = true,\
 			Text = spec.text,\
-			Font = Enum.Font.GothamMedium,\
-			TextColor3 = textColor,\
-			TextSize = 14,\
+			Font = Skin.TitleFont,\
+			TextColor3 = Color3.new(1, 1, 1),\
+			TextSize = 16,\
 			LayoutOrder = index,\
 			Parent = buttonRow,\
-		}, { UI.corner(UDim.new(0, 7)) })\
+		}, { UI.corner(UDim.new(0, 10)) })\
+		-- primary/danger get a white selection ring; others a faint outline\
+		if spec.primary or spec.danger then\
+			UI.new(\"UIStroke\", { Color = Color3.new(1, 1, 1), Thickness = 2, Parent = button })\
+		else\
+			UI.new(\"UIStroke\", { Color = Skin.Stroke, Thickness = 1, Transparency = 0.7, Parent = button })\
+		end\
 		button.Activated:Connect(function()\
 			if spec.onClick then\
 				spec.onClick()\
@@ -4452,9 +4494,9 @@ local function build(): Frame\
 	})\
 	local frame = UI.new(\"Frame\", {\
 		Name = \"ToastStack\",\
-		AnchorPoint = Vector2.new(0.5, 1),\
-		Position = UDim2.new(0.5, 0, 1, -18),\
-		Size = UDim2.fromOffset(360, 0),\
+		AnchorPoint = Vector2.new(0.5, 0),\
+		Position = UDim2.new(0.5, 0, 0, 16),\
+		Size = UDim2.fromOffset(380, 0),\
 		AutomaticSize = Enum.AutomaticSize.Y,\
 		BackgroundTransparency = 1,\
 		Parent = screenGui,\
@@ -4462,7 +4504,7 @@ local function build(): Frame\
 		UI.list(Enum.FillDirection.Vertical, 8),\
 	})\
 	local layout = frame:FindFirstChildOfClass(\"UIListLayout\") :: UIListLayout\
-	layout.VerticalAlignment = Enum.VerticalAlignment.Bottom\
+	layout.VerticalAlignment = Enum.VerticalAlignment.Top\
 	container = frame\
 	return frame\
 end\
@@ -4479,28 +4521,35 @@ function Toast.show(text: string, options: Options?): () -> ()\
 		Name = \"Toast\",\
 		Size = UDim2.new(1, 0, 0, 0),\
 		AutomaticSize = Enum.AutomaticSize.Y,\
-		BackgroundColor3 = Skin.SurfaceRaised,\
+		BackgroundColor3 = Skin.Header,\
 		BackgroundTransparency = 1,\
 		Parent = stack,\
 	}, {\
-		UI.corner(UDim.new(0, 8)),\
-		UI.stroke(Skin.Stroke, 1, 0.4),\
+		UI.corner(UDim.new(0, 10)),\
+		UI.stroke(Skin.Stroke, 1, 0.9),\
 		UI.padding(12),\
 		UI.list(Enum.FillDirection.Horizontal, 10),\
 	})\
-	-- accent stripe\
-	UI.new(\"Frame\", {\
-		Name = \"Stripe\",\
-		Size = UDim2.new(0, 3, 1, -8),\
-		Position = UDim2.fromOffset(2, 4),\
-		BackgroundColor3 = opts.color or Skin.Accent,\
-		BorderSizePixel = 0,\
-		Parent = toast,\
-	}, { UI.corner(UDim.new(1, 0)) })\
+	;(toast:FindFirstChildOfClass(\"UIListLayout\") :: UIListLayout).VerticalAlignment = Enum.VerticalAlignment.Center\
 \
+	local iconImage: ImageLabel? = nil\
+	if opts.icon then\
+		iconImage = UI.new(\"ImageLabel\", {\
+			Name = \"Icon\",\
+			Size = UDim2.fromOffset(22, 22),\
+			BackgroundTransparency = 1,\
+			Image = if tonumber(opts.icon) then `rbxassetid://{opts.icon}` else opts.icon,\
+			ImageColor3 = Skin.Text,\
+			ImageTransparency = 1,\
+			LayoutOrder = 0,\
+			Parent = toast,\
+		}) :: ImageLabel\
+	end\
+\
+	local textInset = (if opts.action then 90 else 0) + (if iconImage then 32 else 0) + 4\
 	local label = UI.new(\"TextLabel\", {\
 		Name = \"Message\",\
-		Size = UDim2.new(1, if opts.action then -90 else -12, 0, 0),\
+		Size = UDim2.new(1, -textInset, 0, 0),\
 		AutomaticSize = Enum.AutomaticSize.Y,\
 		BackgroundTransparency = 1,\
 		Font = Skin.Font,\
@@ -4522,6 +4571,9 @@ function Toast.show(text: string, options: Options?): () -> ()\
 		dismissed = true\
 		TweenService:Create(toast, TWEEN, { BackgroundTransparency = 1 }):Play()\
 		TweenService:Create(label, TWEEN, { TextTransparency = 1 }):Play()\
+		if iconImage then\
+			TweenService:Create(iconImage, TWEEN, { ImageTransparency = 1 }):Play()\
+		end\
 		local tween = TweenService:Create(toast, TWEEN, { Size = UDim2.new(1, 0, 0, 0) })\
 		tween:Play()\
 		tween.Completed:Once(function()\
@@ -4554,6 +4606,9 @@ function Toast.show(text: string, options: Options?): () -> ()\
 	-- fade in\
 	TweenService:Create(toast, TWEEN, { BackgroundTransparency = 0 }):Play()\
 	TweenService:Create(label, TWEEN, { TextTransparency = 0 }):Play()\
+	if iconImage then\
+		TweenService:Create(iconImage, TWEEN, { ImageTransparency = 0 }):Play()\
+	end\
 \
 	task.delay(opts.duration or 3, dismiss)\
 	return dismiss\
@@ -5234,34 +5289,48 @@ return Reference"},
 export type Skin = {\
 	Backdrop: Color3,\
 	Surface: Color3,\
+	SurfaceTop: Color3,\
+	SurfaceBottom: Color3,\
 	SurfaceRaised: Color3,\
 	Header: Color3,\
 	Stroke: Color3,\
+	StrokeTransparency: number,\
 	Divider: Color3,\
 	Text: Color3,\
 	TextMuted: Color3,\
 	Accent: Color3,\
+	Info: Color3,\
 	Danger: Color3,\
 	CornerRadius: UDim,\
+	ButtonRadius: UDim,\
 	HeaderHeight: number,\
 	Font: Enum.Font,\
+	TitleFont: Enum.Font,\
 	Shadow: Color3,\
 }\
 \
+-- Tuned to Roblox's in-experience core UI (the store / quick-access panels):\
+-- near-black headers, a subtly graded dark body, Roblox blue, thin controls.\
 local Skin: Skin = {\
-	Backdrop = Color3.fromRGB(0, 0, 0),        -- dim behind modal windows\
-	Surface = Color3.fromRGB(28, 29, 33),      -- window body\
-	SurfaceRaised = Color3.fromRGB(38, 40, 46),-- inputs, dock buttons\
-	Header = Color3.fromRGB(23, 24, 28),       -- title bar\
-	Stroke = Color3.fromRGB(58, 61, 70),       -- window border\
-	Divider = Color3.fromRGB(48, 50, 58),      -- header/body separator\
-	Text = Color3.fromRGB(235, 238, 245),\
-	TextMuted = Color3.fromRGB(150, 156, 168),\
-	Accent = Color3.fromRGB(0, 162, 255),      -- Roblox blue\
-	Danger = Color3.fromRGB(236, 111, 98),\
-	CornerRadius = UDim.new(0, 10),\
-	HeaderHeight = 40,\
+	Backdrop = Color3.fromRGB(0, 0, 0),          -- dim behind modal windows\
+	Surface = Color3.fromRGB(24, 26, 31),        -- body base (solid fallback)\
+	SurfaceTop = Color3.fromRGB(31, 34, 40),     -- body gradient, top\
+	SurfaceBottom = Color3.fromRGB(14, 15, 19),  -- body gradient, bottom\
+	SurfaceRaised = Color3.fromRGB(38, 41, 48),  -- inputs, dock buttons\
+	Header = Color3.fromRGB(13, 13, 16),         -- near-black title bar\
+	Stroke = Color3.fromRGB(255, 255, 255),      -- border, used at StrokeTransparency\
+	StrokeTransparency = 0.9,\
+	Divider = Color3.fromRGB(40, 43, 50),        -- header/body separator\
+	Text = Color3.fromRGB(255, 255, 255),\
+	TextMuted = Color3.fromRGB(162, 166, 176),\
+	Accent = Color3.fromRGB(51, 95, 255),        -- Roblox blue (#335FFF)\
+	Info = Color3.fromRGB(80, 128, 240),         -- the shop info-banner blue\
+	Danger = Color3.fromRGB(226, 74, 74),\
+	CornerRadius = UDim.new(0, 12),\
+	ButtonRadius = UDim.new(0, 8),\
+	HeaderHeight = 48,\
 	Font = Enum.Font.GothamMedium,\
+	TitleFont = Enum.Font.GothamBold,\
 	Shadow = Color3.fromRGB(0, 0, 0),\
 }\
 \
@@ -5324,6 +5393,7 @@ export type Window = {\
 	center: (self: Window) -> Window,\
 	setDraggable: (self: Window, enabled: boolean) -> Window,\
 	setResizable: (self: Window, enabled: boolean) -> Window,\
+	setHeaderVisible: (self: Window, enabled: boolean) -> Window,\
 	setModal: (self: Window, enabled: boolean, dismissable: boolean?) -> Window,\
 	adopt: (self: Window, guiObject: GuiObject) -> Window,\
 	release: (self: Window) -> Window,\
@@ -5347,6 +5417,16 @@ export type StaticWindow = {\
 			return (nil :: any) :: Window\
 		end\
 	),\
+}\
+\
+-- Config accepted by icon:setWindow(); every field optional.\
+export type WindowConfig = {\
+	title: string?,\
+	icon: (number | string)?,\
+	width: number?,\
+	height: number?,\
+	modal: boolean?,\
+	resizable: boolean?,\
 }\
 \
 -- The singleton that owns the shared window layer, z-order, focus, and dock feed.\
@@ -5378,10 +5458,11 @@ export type Dock = {\
 }\
 \
 export type ToastOptions = {\
-	duration: number?,       -- seconds before auto-dismiss (default 3)\
-	action: string?,         -- optional action button label\
-	onAction: (() -> ())?,   -- action button callback\
-	color: Color3?,          -- accent stripe colour\
+	duration: number?,          -- seconds before auto-dismiss (default 3)\
+	icon: (number | string)?,   -- optional leading icon (asset id or string)\
+	action: string?,            -- optional action button label\
+	onAction: (() -> ())?,      -- action button callback\
+	color: Color3?,             -- action button colour (default Roblox blue)\
 }\
 export type Toast = {\
 	show: (text: string, options: ToastOptions?) -> () -> (),\
@@ -5819,10 +5900,28 @@ type Methods = {\
 			return nil :: any\
 		end\
 	),\
+	setWindow: typeof(\
+		--[[\
+			Creates a Window, binds it to this icon (the shop-button pattern), and returns\
+			the Window so you can populate it. Pass a config table to set title/size/etc.\
+			Prefer this over Material.Window.new() when the window belongs to an icon.\
+		]]\
+		function(self: Icon, config: WindowConfig?): Window\
+			return (nil :: any) :: Window\
+		end\
+	),\
+	getWindow: typeof(\
+		--[[\
+			Returns the Window bound to this icon (via setWindow or bindWindow), or nil.\
+		]]\
+		function(self: Icon): Window?\
+			return (nil :: any) :: Window?\
+		end\
+	),\
 	bindWindow: typeof(\
 		--[[\
-			Binds a Window to this icon: selecting the icon opens the window, deselecting\
-			closes it, and closing the window deselects the icon (the shop-button pattern).\
+			Binds an existing Window to this icon: selecting the icon opens the window,\
+			deselecting closes it, and closing the window deselects the icon.\
 		]]\
 		function(self: Icon, window: Window): Icon\
 			return nil :: any\
@@ -6604,16 +6703,16 @@ return (Dock :: any) :: Types.Dock\
 --- [[Icon:bindWindow]] for the full shop-button experience.\
 ---\
 --- ```lua a shop window opened from the topbar\
---- local shop = Material.Window.new()\
----     :setTitle(\"Shop\")\
----     :setIcon(14723463500)\
----     :setSize(560, 400)\
----     :adopt(playerGui.ShopGui.Root)   -- reparent your existing UI in\
----\
---- Material.new()\
+--- -- the preferred path: icon:setWindow creates + binds the window\
+--- local shop = Material.new()\
 ---     :setImage(14723463500)\
 ---     :setCaption(\"Shop\")\
----     :bindWindow(shop)                -- topbar icon toggles it\
+---     :setWindow({ title = \"Shop\", width = 560, height = 400 })\
+---\
+--- shop:adopt(playerGui.ShopGui.Root)   -- reparent your existing UI in\
+---\
+--- -- or standalone, if the window isn't tied to an icon:\
+--- local win = Material.Window.new():setTitle(\"Inventory\"):open()\
 --- ```\
 --- @section Windows\
 --- @client\
@@ -6721,22 +6820,23 @@ function Window:_build()\
 		Parent = rootFrame,\
 	})\
 \
-	-- the visible, clipped panel\
+	-- the visible, clipped panel with a subtle top->bottom gradient\
 	local panel = UI.new(\"Frame\", {\
 		Name = \"Panel\",\
 		Size = UDim2.fromScale(1, 1),\
-		BackgroundColor3 = Skin.Surface,\
+		BackgroundColor3 = Color3.new(1, 1, 1),  -- gradient supplies the colour\
 		BorderSizePixel = 0,\
 		ClipsDescendants = true,\
 		ZIndex = 1,\
 		Parent = rootFrame,\
 	}, {\
 		UI.corner(Skin.CornerRadius),\
-		UI.stroke(Skin.Stroke, 1, 0.2),\
+		UI.stroke(Skin.Stroke, 1, Skin.StrokeTransparency),\
+		UI.gradient(Skin.SurfaceTop, Skin.SurfaceBottom, 90),\
 	})\
 	self.panel = panel\
 \
-	-- header / title bar\
+	-- header / title bar: near-black, with the close (X) on the LEFT (Roblox style)\
 	local header = UI.new(\"Frame\", {\
 		Name = \"Header\",\
 		Size = UDim2.new(1, 0, 0, Skin.HeaderHeight),\
@@ -6744,8 +6844,7 @@ function Window:_build()\
 		BorderSizePixel = 0,\
 		ZIndex = 2,\
 	}, { UI.corner(Skin.CornerRadius) })\
-	-- square off the header's bottom corners against the body\
-	UI.new(\"Frame\", {\
+	UI.new(\"Frame\", {   -- square off the header's bottom corners against the body\
 		Name = \"HeaderFill\",\
 		AnchorPoint = Vector2.new(0, 1),\
 		Position = UDim2.fromScale(0, 1),\
@@ -6757,11 +6856,44 @@ function Window:_build()\
 	header.Parent = panel\
 	self.header = header\
 \
+	-- a thin, transparent icon button with a faint hover highlight\
+	local function iconButton(name: string, glyph: string, textSize: number, callback: () -> ()): TextButton\
+		local button = UI.new(\"TextButton\", {\
+			Name = name,\
+			Size = UDim2.fromOffset(32, 32),\
+			BackgroundColor3 = Color3.new(1, 1, 1),\
+			BackgroundTransparency = 1,\
+			AutoButtonColor = false,\
+			Text = glyph,\
+			Font = Skin.Font,\
+			TextColor3 = Skin.Text,\
+			TextSize = textSize,\
+			ZIndex = 3,\
+		}, { UI.corner(Skin.ButtonRadius) }) :: TextButton\
+		local hover = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)\
+		self.janitor:add(button.MouseEnter:Connect(function()\
+			TweenService:Create(button, hover, { BackgroundTransparency = 0.88 }):Play()\
+		end))\
+		self.janitor:add(button.MouseLeave:Connect(function()\
+			TweenService:Create(button, hover, { BackgroundTransparency = 1 }):Play()\
+		end))\
+		self.janitor:add(button.Activated:Connect(callback))\
+		return button\
+	end\
+\
+	-- close (X) on the left\
+	local closeButton = iconButton(\"Close\", \"\\u{2715}\", 16, function()\
+		self:close()\
+	end)\
+	closeButton.AnchorPoint = Vector2.new(0, 0.5)\
+	closeButton.Position = UDim2.new(0, 8, 0.5, 0)\
+	closeButton.Parent = header\
+\
 	local titleIcon = UI.new(\"ImageLabel\", {\
 		Name = \"TitleIcon\",\
 		AnchorPoint = Vector2.new(0, 0.5),\
-		Position = UDim2.new(0, 12, 0.5, 0),\
-		Size = UDim2.fromOffset(20, 20),\
+		Position = UDim2.new(0, 50, 0.5, 0),\
+		Size = UDim2.fromOffset(22, 22),\
 		BackgroundTransparency = 1,\
 		Visible = false,\
 		ZIndex = 3,\
@@ -6772,13 +6904,13 @@ function Window:_build()\
 	local titleLabel = UI.new(\"TextLabel\", {\
 		Name = \"Title\",\
 		AnchorPoint = Vector2.new(0, 0.5),\
-		Position = UDim2.new(0, 14, 0.5, 0),\
-		Size = UDim2.new(1, -160, 1, 0),\
+		Position = UDim2.new(0, 50, 0.5, 0),\
+		Size = UDim2.new(1, -140, 1, 0),\
 		BackgroundTransparency = 1,\
-		Font = Skin.Font,\
+		Font = Skin.TitleFont,\
 		Text = self.title,\
 		TextColor3 = Skin.Text,\
-		TextSize = 15,\
+		TextSize = 17,\
 		TextXAlignment = Enum.TextXAlignment.Left,\
 		TextTruncate = Enum.TextTruncate.AtEnd,\
 		ZIndex = 3,\
@@ -6786,52 +6918,47 @@ function Window:_build()\
 	})\
 	self.titleLabel = titleLabel\
 \
-	-- window controls (minimize / maximize / close)\
+	-- right-side controls: minimize, maximize (thin icons)\
 	local controls = UI.new(\"Frame\", {\
 		Name = \"Controls\",\
 		AnchorPoint = Vector2.new(1, 0.5),\
-		Position = UDim2.new(1, -8, 0.5, 0),\
-		Size = UDim2.fromOffset(112, 28),\
+		Position = UDim2.new(1, -6, 0.5, 0),\
+		Size = UDim2.fromOffset(72, 32),\
 		BackgroundTransparency = 1,\
 		ZIndex = 3,\
-	}, { UI.list(Enum.FillDirection.Horizontal, 6) })\
+	}, { UI.list(Enum.FillDirection.Horizontal, 4) })\
+	;(controls:FindFirstChildOfClass(\"UIListLayout\") :: UIListLayout).HorizontalAlignment = Enum.HorizontalAlignment.Right\
 	controls.Parent = header\
 \
-	local function controlButton(name, glyph, color, order, callback)\
-		local button = UI.new(\"TextButton\", {\
-			Name = name,\
-			Size = UDim2.fromOffset(28, 28),\
-			BackgroundColor3 = Skin.SurfaceRaised,\
-			AutoButtonColor = true,\
-			Text = glyph,\
-			Font = Enum.Font.GothamBold,\
-			TextColor3 = color,\
-			TextSize = 15,\
-			LayoutOrder = order,\
-			ZIndex = 3,\
-			Parent = controls,\
-		}, { UI.corner(UDim.new(0, 6)) })\
-		self.janitor:add(button.Activated:Connect(callback))\
-		return button\
-	end\
-\
-	controlButton(\"Minimize\", \"\\u{2013}\", Skin.TextMuted, 1, function()\
+	local minButton = iconButton(\"Minimize\", \"\\u{2013}\", 18, function()\
 		self:minimize()\
 	end)\
-	self.maximizeButton = controlButton(\"Maximize\", \"\\u{25A1}\", Skin.TextMuted, 2, function()\
+	minButton.LayoutOrder = 1\
+	minButton.Parent = controls\
+	self.maximizeButton = iconButton(\"Maximize\", \"\\u{25A1}\", 15, function()\
 		if self.isMaximized then self:restore() else self:maximize() end\
 	end)\
-	controlButton(\"Close\", \"\\u{2715}\", Skin.Danger, 3, function()\
-		self:close()\
-	end)\
+	self.maximizeButton.LayoutOrder = 2\
+	self.maximizeButton.Parent = controls\
 \
-	-- body (where content / adopted UI lives)\
+	-- divider under the header\
+	self.divider = UI.new(\"Frame\", {\
+		Name = \"Divider\",\
+		Position = UDim2.new(0, 0, 0, Skin.HeaderHeight),\
+		Size = UDim2.new(1, 0, 0, 1),\
+		BackgroundColor3 = Skin.Divider,\
+		BorderSizePixel = 0,\
+		ZIndex = 2,\
+		Parent = panel,\
+	})\
+\
+	-- body (transparent so the panel gradient shows through)\
 	local body = UI.new(\"Frame\", {\
 		Name = \"Body\",\
 		AnchorPoint = Vector2.new(0, 1),\
 		Position = UDim2.fromScale(0, 1),\
 		Size = UDim2.new(1, 0, 1, -Skin.HeaderHeight),\
-		BackgroundColor3 = Skin.Surface,\
+		BackgroundTransparency = 1,\
 		BorderSizePixel = 0,\
 		ClipsDescendants = true,\
 		ZIndex = 1,\
@@ -7008,6 +7135,17 @@ end\
 --- Enables or disables edge/corner resizing (default true).\
 function Window:setResizable(bool: boolean)\
 	self.resizable = bool\
+	return self\
+end\
+\
+--- Shows or hides the title bar. Hidden gives the headerless, centered look of\
+--- Roblox's respawn/confirm modals — the body fills the whole panel. Dragging\
+--- (which lives on the header) is unavailable while hidden.\
+function Window:setHeaderVisible(bool: boolean)\
+	self.headerVisible = bool\
+	self.header.Visible = bool\
+	self.divider.Visible = bool\
+	self.body.Size = UDim2.new(1, 0, 1, if bool then -Skin.HeaderHeight else 0)\
 	return self\
 end\
 \
