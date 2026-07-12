@@ -15,6 +15,7 @@
 local Players = game:GetService("Players")
 
 local root = script.Parent.Parent
+local Types = require(root.Types)
 local Signal = require(root.Packages.GoodSignal)
 local UI = require(root.UI)
 local Skin = require(root.Skin)
@@ -146,4 +147,4 @@ function WindowController.closeAll()
 	end
 end
 
-return WindowController
+return (WindowController :: any) :: Types.WindowController

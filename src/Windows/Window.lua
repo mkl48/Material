@@ -28,12 +28,15 @@ local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local root = script.Parent.Parent
+local Types = require(root.Types)
 local Signal = require(root.Packages.GoodSignal)
 local Janitor = require(root.Packages.Janitor)
 local Utility = require(root.Utility)
 local UI = require(root.UI)
 local Skin = require(root.Skin)
 local WindowController = require(script.Parent.WindowController)
+
+export type Window = Types.Window
 
 local MIN_WIDTH = 220
 local MIN_HEIGHT = 140
@@ -631,4 +634,4 @@ function Window:destroy()
 end
 Window.Destroy = Window.destroy
 
-return Window
+return (Window :: any) :: Types.StaticWindow

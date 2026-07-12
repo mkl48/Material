@@ -76,6 +76,16 @@ local Types = require(script.Types)\
 \
 -- TYPES\
 export type Icon = Types.Icon\
+export type IconState = Types.IconState\
+export type Window = Types.Window\
+export type WindowController = Types.WindowController\
+export type Dock = Types.Dock\
+export type Toast = Types.Toast\
+export type ToastOptions = Types.ToastOptions\
+export type Dialog = Types.Dialog\
+export type DialogOptions = Types.DialogOptions\
+export type DialogButton = Types.DialogButton\
+export type Tooltip = Types.Tooltip\
 \
 \
 \
@@ -4300,26 +4310,15 @@ return {\
 --- @client\
 \
 local root = script.Parent.Parent\
+local Types = require(root.Types)\
 local UI = require(root.UI)\
 local Skin = require(root.Skin)\
 local Window = require(root.Windows.Window)\
 \
 local Dialog = {}\
 \
-export type Button = {\
-	text: string,\
-	primary: boolean?,       -- accent-filled instead of subtle\
-	danger: boolean?,        -- danger-coloured\
-	onClick: (() -> ())?,    -- runs before the dialog closes\
-}\
-\
-export type Options = {\
-	title: string?,\
-	message: string,\
-	buttons: { Button }?,    -- defaults to a single \"OK\"\
-	dismissable: boolean?,   -- click backdrop / close button to dismiss (default true)\
-	width: number?,\
-}\
+export type Button = Types.DialogButton\
+export type Options = Types.DialogOptions\
 \
 --- Shows a modal dialog and returns its [[Window]] (already open).\
 function Dialog.show(options: Options): any\
@@ -4408,7 +4407,7 @@ function Dialog.confirm(message: string, onConfirm: () -> (), onCancel: (() -> (
 	})\
 end\
 \
-return Dialog\
+return (Dialog :: any) :: Types.Dialog\
 "},
 {"Material/Overlays/Toast","ModuleScript","--- Transient snackbar notifications that stack in a screen corner and dismiss\
 --- themselves — distinct from an [[Icon]]'s notice badge. Fire-and-forget:\
@@ -4428,17 +4427,13 @@ local Players = game:GetService(\"Players\")\
 local TweenService = game:GetService(\"TweenService\")\
 \
 local root = script.Parent.Parent\
+local Types = require(root.Types)\
 local UI = require(root.UI)\
 local Skin = require(root.Skin)\
 \
 local Toast = {}\
 \
-export type Options = {\
-	duration: number?,       -- seconds before auto-dismiss (default 3)\
-	action: string?,         -- optional action button label\
-	onAction: (() -> ())?,   -- action button callback\
-	color: Color3?,          -- accent stripe colour (default Skin.Accent)\
-}\
+export type Options = Types.ToastOptions\
 \
 local TWEEN = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)\
 local container: Frame? = nil\
@@ -4564,7 +4559,7 @@ function Toast.show(text: string, options: Options?): () -> ()\
 	return dismiss\
 end\
 \
-return Toast\
+return (Toast :: any) :: Types.Toast\
 "},
 {"Material/Overlays/Tooltip","ModuleScript","--- Rich hover tooltips for *any* GuiObject, not just icons. Attach one to a\
 --- button, a frame, anything — it follows the pointer, fades in after a short\
@@ -4581,6 +4576,7 @@ local UserInputService = game:GetService(\"UserInputService\")\
 local TweenService = game:GetService(\"TweenService\")\
 \
 local root = script.Parent.Parent\
+local Types = require(root.Types)\
 local UI = require(root.UI)\
 local Skin = require(root.Skin)\
 \
@@ -4691,7 +4687,7 @@ function Tooltip.attach(guiObject: GuiObject, text: string): () -> ()\
 	end\
 end\
 \
-return Tooltip\
+return (Tooltip :: any) :: Types.Tooltip\
 "},
 {"Material/Packages","Folder",nil},
 {"Material/Packages/GoodSignal","ModuleScript","--------------------------------------------------------------------------------\
@@ -5298,6 +5294,122 @@ export type EventSource = \"User\" | \"OneClick\" | \"AutoDeselect\" | \"HidePar
 export type Modification = { any }\
 \
 \
+---------------------- WINDOWS & OVERLAYS (Material additions) ----------------------\
+\
+-- A draggable, resizable window emulating Roblox's in-game core UI.\
+export type Window = {\
+	-- fields\
+	UID: string,\
+	title: string,\
+	isOpen: boolean,\
+	isMinimized: boolean,\
+	isMaximized: boolean,\
+	isModal: boolean,\
+	root: Frame,\
+	body: Frame,\
+	-- events\
+	opened: Signal,\
+	closed: Signal,\
+	minimized: Signal,\
+	maximized: Signal,\
+	restored: Signal,\
+	focused: Signal,\
+	moved: Signal<number, number>,\
+	resized: Signal<number, number>,\
+	-- methods (chainable)\
+	setTitle: (self: Window, text: string) -> Window,\
+	setIcon: (self: Window, imageId: (number | string)?) -> Window,\
+	setSize: (self: Window, width: number, height: number) -> Window,\
+	setPosition: (self: Window, x: number, y: number) -> Window,\
+	center: (self: Window) -> Window,\
+	setDraggable: (self: Window, enabled: boolean) -> Window,\
+	setResizable: (self: Window, enabled: boolean) -> Window,\
+	setModal: (self: Window, enabled: boolean, dismissable: boolean?) -> Window,\
+	adopt: (self: Window, guiObject: GuiObject) -> Window,\
+	release: (self: Window) -> Window,\
+	getBody: (self: Window) -> Frame,\
+	open: (self: Window) -> Window,\
+	close: (self: Window) -> Window,\
+	toggle: (self: Window) -> Window,\
+	minimize: (self: Window) -> Window,\
+	maximize: (self: Window) -> Window,\
+	restore: (self: Window) -> Window,\
+	focus: (self: Window) -> Window,\
+	destroy: (self: Window) -> (),\
+}\
+\
+export type StaticWindow = {\
+	new: typeof(\
+		--[[\
+			Constructs a hidden, centered 480x320 window. Call <code>:open()</code> to show it.\
+		]]\
+		function(): Window\
+			return (nil :: any) :: Window\
+		end\
+	),\
+}\
+\
+-- The singleton that owns the shared window layer, z-order, focus, and dock feed.\
+export type WindowController = {\
+	windows: { [string]: Window },\
+	activeWindow: Window?,\
+	baseDisplayOrder: number,\
+	windowRegistered: Signal<Window>,\
+	windowUnregistered: Signal<Window>,\
+	windowMinimized: Signal<Window>,\
+	windowRestored: Signal<Window>,\
+	activeChanged: Signal,\
+	getLayer: () -> ScreenGui,\
+	getBackdrop: () -> Frame,\
+	register: (window: Window) -> (),\
+	unregister: (window: Window) -> (),\
+	notifyMinimized: (window: Window) -> (),\
+	notifyRestored: (window: Window) -> (),\
+	focus: (window: Window) -> (),\
+	getWindows: () -> { [string]: Window },\
+	closeAll: () -> (),\
+}\
+\
+-- An optional taskbar of minimized windows.\
+export type Dock = {\
+	enabled: boolean,\
+	setEnabled: (enabled: boolean) -> Dock,\
+	getInstance: () -> Frame,\
+}\
+\
+export type ToastOptions = {\
+	duration: number?,       -- seconds before auto-dismiss (default 3)\
+	action: string?,         -- optional action button label\
+	onAction: (() -> ())?,   -- action button callback\
+	color: Color3?,          -- accent stripe colour\
+}\
+export type Toast = {\
+	show: (text: string, options: ToastOptions?) -> () -> (),\
+}\
+\
+export type DialogButton = {\
+	text: string,\
+	primary: boolean?,\
+	danger: boolean?,\
+	onClick: (() -> ())?,\
+}\
+export type DialogOptions = {\
+	title: string?,\
+	message: string,\
+	buttons: { DialogButton }?,\
+	dismissable: boolean?,\
+	width: number?,\
+}\
+export type Dialog = {\
+	show: (options: DialogOptions) -> Window,\
+	confirm: (message: string, onConfirm: () -> (), onCancel: (() -> ())?) -> Window,\
+}\
+\
+export type Tooltip = {\
+	attach: (guiObject: GuiObject, text: string) -> () -> (),\
+}\
+\
+\
 type StaticFunctions = {\
 	getIcons: typeof(\
 		--[[\
@@ -5707,6 +5819,15 @@ type Methods = {\
 			return nil :: any\
 		end\
 	),\
+	bindWindow: typeof(\
+		--[[\
+			Binds a Window to this icon: selecting the icon opens the window, deselecting\
+			closes it, and closing the window deselects the icon (the shop-button pattern).\
+		]]\
+		function(self: Icon, window: Window): Icon\
+			return nil :: any\
+		end\
+	),\
 	destroy: typeof(\
 		--[[\
 			Clears all connections and destroys all instances associated with the icon.\
@@ -5745,6 +5866,13 @@ export type StaticIcon = {\
 			return (nil :: any) :: Icon\
 		end\
 	),\
+	-- Material's window + overlay subsystem (emulator layer)\
+	Window: StaticWindow,\
+	WindowController: WindowController,\
+	Dock: Dock,\
+	Toast: Toast,\
+	Dialog: Dialog,\
+	Tooltip: Tooltip,\
 } & StaticFunctions\
 \
 return {}"},
@@ -6354,6 +6482,7 @@ return VERSION"},
 local Players = game:GetService(\"Players\")\
 \
 local root = script.Parent.Parent\
+local Types = require(root.Types)\
 local Janitor = require(root.Packages.Janitor)\
 local UI = require(root.UI)\
 local Skin = require(root.Skin)\
@@ -6462,7 +6591,7 @@ function Dock.getInstance(): Frame\
 	return build()\
 end\
 \
-return Dock\
+return (Dock :: any) :: Types.Dock\
 "},
 {"Material/Windows/Window","ModuleScript","--- A draggable, resizable window emulating Roblox's in-experience core UI (the\
 --- store / quick-access panel). Create one, give it a title and size, and drop\
@@ -6494,12 +6623,15 @@ local TweenService = game:GetService(\"TweenService\")\
 local Workspace = game:GetService(\"Workspace\")\
 \
 local root = script.Parent.Parent\
+local Types = require(root.Types)\
 local Signal = require(root.Packages.GoodSignal)\
 local Janitor = require(root.Packages.Janitor)\
 local Utility = require(root.Utility)\
 local UI = require(root.UI)\
 local Skin = require(root.Skin)\
 local WindowController = require(script.Parent.WindowController)\
+\
+export type Window = Types.Window\
 \
 local MIN_WIDTH = 220\
 local MIN_HEIGHT = 140\
@@ -7097,7 +7229,7 @@ function Window:destroy()\
 end\
 Window.Destroy = Window.destroy\
 \
-return Window\
+return (Window :: any) :: Types.StaticWindow\
 "},
 {"Material/Windows/WindowController","ModuleScript","--- The window manager: one singleton owning the shared `MaterialWindows`\
 --- ScreenGui, the registry of every open [[Window]], z-ordering and focus, the\
@@ -7116,6 +7248,7 @@ return Window\
 local Players = game:GetService(\"Players\")\
 \
 local root = script.Parent.Parent\
+local Types = require(root.Types)\
 local Signal = require(root.Packages.GoodSignal)\
 local UI = require(root.UI)\
 local Skin = require(root.Skin)\
@@ -7247,7 +7380,7 @@ function WindowController.closeAll()\
 	end\
 end\
 \
-return WindowController\
+return (WindowController :: any) :: Types.WindowController\
 "},
 }
 local ReplicatedStorage = game:GetService("ReplicatedStorage")

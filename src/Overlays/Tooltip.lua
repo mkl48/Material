@@ -13,6 +13,7 @@ local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 
 local root = script.Parent.Parent
+local Types = require(root.Types)
 local UI = require(root.UI)
 local Skin = require(root.Skin)
 
@@ -123,4 +124,4 @@ function Tooltip.attach(guiObject: GuiObject, text: string): () -> ()
 	end
 end
 
-return Tooltip
+return (Tooltip :: any) :: Types.Tooltip

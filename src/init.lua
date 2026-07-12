@@ -72,6 +72,16 @@ local Types = require(script.Types)
 
 -- TYPES
 export type Icon = Types.Icon
+export type IconState = Types.IconState
+export type Window = Types.Window
+export type WindowController = Types.WindowController
+export type Dock = Types.Dock
+export type Toast = Types.Toast
+export type ToastOptions = Types.ToastOptions
+export type Dialog = Types.Dialog
+export type DialogOptions = Types.DialogOptions
+export type DialogButton = Types.DialogButton
+export type Tooltip = Types.Tooltip
 
 
 

@@ -16,17 +16,13 @@ local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 
 local root = script.Parent.Parent
+local Types = require(root.Types)
 local UI = require(root.UI)
 local Skin = require(root.Skin)
 
 local Toast = {}
 
-export type Options = {
-	duration: number?,       -- seconds before auto-dismiss (default 3)
-	action: string?,         -- optional action button label
-	onAction: (() -> ())?,   -- action button callback
-	color: Color3?,          -- accent stripe colour (default Skin.Accent)
-}
+export type Options = Types.ToastOptions
 
 local TWEEN = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local container: Frame? = nil
@@ -152,4 +148,4 @@ function Toast.show(text: string, options: Options?): () -> ()
 	return dismiss
 end
 
-return Toast
+return (Toast :: any) :: Types.Toast

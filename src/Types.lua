@@ -25,6 +25,122 @@ export type EventSource = "User" | "OneClick" | "AutoDeselect" | "HideParentFeat
 export type Modification = { any }
 
 
+---------------------- WINDOWS & OVERLAYS (Material additions) ----------------------
+
+-- A draggable, resizable window emulating Roblox's in-game core UI.
+export type Window = {
+	-- fields
+	UID: string,
+	title: string,
+	isOpen: boolean,
+	isMinimized: boolean,
+	isMaximized: boolean,
+	isModal: boolean,
+	root: Frame,
+	body: Frame,
+	-- events
+	opened: Signal,
+	closed: Signal,
+	minimized: Signal,
+	maximized: Signal,
+	restored: Signal,
+	focused: Signal,
+	moved: Signal<number, number>,
+	resized: Signal<number, number>,
+	-- methods (chainable)
+	setTitle: (self: Window, text: string) -> Window,
+	setIcon: (self: Window, imageId: (number | string)?) -> Window,
+	setSize: (self: Window, width: number, height: number) -> Window,
+	setPosition: (self: Window, x: number, y: number) -> Window,
+	center: (self: Window) -> Window,
+	setDraggable: (self: Window, enabled: boolean) -> Window,
+	setResizable: (self: Window, enabled: boolean) -> Window,
+	setModal: (self: Window, enabled: boolean, dismissable: boolean?) -> Window,
+	adopt: (self: Window, guiObject: GuiObject) -> Window,
+	release: (self: Window) -> Window,
+	getBody: (self: Window) -> Frame,
+	open: (self: Window) -> Window,
+	close: (self: Window) -> Window,
+	toggle: (self: Window) -> Window,
+	minimize: (self: Window) -> Window,
+	maximize: (self: Window) -> Window,
+	restore: (self: Window) -> Window,
+	focus: (self: Window) -> Window,
+	destroy: (self: Window) -> (),
+}
+
+export type StaticWindow = {
+	new: typeof(
+		--[[
+			Constructs a hidden, centered 480x320 window. Call <code>:open()</code> to show it.
+		]]
+		function(): Window
+			return (nil :: any) :: Window
+		end
+	),
+}
+
+-- The singleton that owns the shared window layer, z-order, focus, and dock feed.
+export type WindowController = {
+	windows: { [string]: Window },
+	activeWindow: Window?,
+	baseDisplayOrder: number,
+	windowRegistered: Signal<Window>,
+	windowUnregistered: Signal<Window>,
+	windowMinimized: Signal<Window>,
+	windowRestored: Signal<Window>,
+	activeChanged: Signal,
+	getLayer: () -> ScreenGui,
+	getBackdrop: () -> Frame,
+	register: (window: Window) -> (),
+	unregister: (window: Window) -> (),
+	notifyMinimized: (window: Window) -> (),
+	notifyRestored: (window: Window) -> (),
+	focus: (window: Window) -> (),
+	getWindows: () -> { [string]: Window },
+	closeAll: () -> (),
+}
+
+-- An optional taskbar of minimized windows.
+export type Dock = {
+	enabled: boolean,
+	setEnabled: (enabled: boolean) -> Dock,
+	getInstance: () -> Frame,
+}
+
+export type ToastOptions = {
+	duration: number?,       -- seconds before auto-dismiss (default 3)
+	action: string?,         -- optional action button label
+	onAction: (() -> ())?,   -- action button callback
+	color: Color3?,          -- accent stripe colour
+}
+export type Toast = {
+	show: (text: string, options: ToastOptions?) -> () -> (),
+}
+
+export type DialogButton = {
+	text: string,
+	primary: boolean?,
+	danger: boolean?,
+	onClick: (() -> ())?,
+}
+export type DialogOptions = {
+	title: string?,
+	message: string,
+	buttons: { DialogButton }?,
+	dismissable: boolean?,
+	width: number?,
+}
+export type Dialog = {
+	show: (options: DialogOptions) -> Window,
+	confirm: (message: string, onConfirm: () -> (), onCancel: (() -> ())?) -> Window,
+}
+
+export type Tooltip = {
+	attach: (guiObject: GuiObject, text: string) -> () -> (),
+}
+
+
 type StaticFunctions = {
 	getIcons: typeof(
 		--[[
@@ -434,6 +550,15 @@ type Methods = {
 			return nil :: any
 		end
 	),
+	bindWindow: typeof(
+		--[[
+			Binds a Window to this icon: selecting the icon opens the window, deselecting
+			closes it, and closing the window deselects the icon (the shop-button pattern).
+		]]
+		function(self: Icon, window: Window): Icon
+			return nil :: any
+		end
+	),
 	destroy: typeof(
 		--[[
 			Clears all connections and destroys all instances associated with the icon.
@@ -472,6 +597,13 @@ export type StaticIcon = {
 			return (nil :: any) :: Icon
 		end
 	),
+	-- Material's window + overlay subsystem (emulator layer)
+	Window: StaticWindow,
+	WindowController: WindowController,
+	Dock: Dock,
+	Toast: Toast,
+	Dialog: Dialog,
+	Tooltip: Tooltip,
 } & StaticFunctions
 
 return {}

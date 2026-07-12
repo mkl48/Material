@@ -11,6 +11,7 @@
 local Players = game:GetService("Players")
 
 local root = script.Parent.Parent
+local Types = require(root.Types)
 local Janitor = require(root.Packages.Janitor)
 local UI = require(root.UI)
 local Skin = require(root.Skin)
@@ -119,4 +120,4 @@ function Dock.getInstance(): Frame
 	return build()
 end
 
-return Dock
+return (Dock :: any) :: Types.Dock

@@ -11,26 +11,15 @@
 --- @client
 
 local root = script.Parent.Parent
+local Types = require(root.Types)
 local UI = require(root.UI)
 local Skin = require(root.Skin)
 local Window = require(root.Windows.Window)
 
 local Dialog = {}
 
-export type Button = {
-	text: string,
-	primary: boolean?,       -- accent-filled instead of subtle
-	danger: boolean?,        -- danger-coloured
-	onClick: (() -> ())?,    -- runs before the dialog closes
-}
-
-export type Options = {
-	title: string?,
-	message: string,
-	buttons: { Button }?,    -- defaults to a single "OK"
-	dismissable: boolean?,   -- click backdrop / close button to dismiss (default true)
-	width: number?,
-}
+export type Button = Types.DialogButton
+export type Options = Types.DialogOptions
 
 --- Shows a modal dialog and returns its [[Window]] (already open).
 function Dialog.show(options: Options): any
@@ -119,4 +108,4 @@ function Dialog.confirm(message: string, onConfirm: () -> (), onCancel: (() -> (
 	})
 end
 
-return Dialog
+return (Dialog :: any) :: Types.Dialog
